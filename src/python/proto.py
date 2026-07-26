@@ -14,11 +14,16 @@ The contract, in one place:
   export.
 * ``MyDesign.analyze(self) -> Report`` — optional; returns the printability report.
 * ``MyDesign.PRESETS: list[dict]`` — optional; curated starting points.
+* ``MyDesign.PRESET_LABEL: str`` — optional; what the presets vary, in the user's
+  words ("Link shape"). Titles the form's preset picker and the rule above the
+  fields the presets write.
 
 Form-hint helpers (``slider_field`` / ``choice_field`` / ``select_field``) attach
 widget metadata to each pydantic ``Field`` via ``json_schema_extra``; each stamps a
 ``widget`` discriminator (``"slider"`` / ``"shape"`` / ``"select"``) the frontend
-form switches on (see ``src/components/ParamForm.vue``).
+form switches on (see ``src/components/ParamForm.vue``). Any extra keyword lands
+in ``json_schema_extra`` as-is; ``preset_stable=True`` is the one the preset
+picker reads (see ``PRESETS`` below).
 """
 
 from __future__ import annotations
@@ -522,7 +527,17 @@ class Design(Compound, Generic[P]):
   # The pydantic params class, bound automatically from ``Design[MyParams]`` so
   # the form's JSON schema is available before any geometry is built.
   Parameters: ClassVar[type[BaseModel]]
+
+  # Curated starting points: ``{name, description, params}``, where ``params`` is
+  # applied by *replacement* — the form rebuilds from the schema defaults, lays the
+  # preset's values over them, then restores the fields marked
+  # ``preset_stable=True`` to whatever the user had. So a preset describes one
+  # coherent thing (the chain's link shape) while the parameters that are the
+  # user's own (how many links, which layout) survive every switch. A preset
+  # should therefore spell out every non-stable field it cares about, and name no
+  # stable one. ``PRESET_LABEL`` names what is being varied.
   PRESETS: ClassVar[list[dict]] = []
+  PRESET_LABEL: ClassVar[str] = "Preset"
   def __init_subclass__(cls, **kwargs: Any) -> None:
     super().__init_subclass__(**kwargs)
     for base in getattr(cls, "__orig_bases__", ()):

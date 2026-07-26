@@ -54,7 +54,7 @@ def get_presets_json() -> str:
 def reload_design(source: str) -> str:
   """Swap in a new design module without rebooting Pyodide: exec ``source`` in a
   fresh namespace, rebind ``ActiveDesign`` to its ``Design`` subclass, and return
-  the fresh ``{"ok", "schema", "presets"}`` for the form. Drives design selection
+  the fresh ``{"ok", "schema", "presets", "preset_label"}`` for the form. Drives design selection
   from the gallery (a bundled design's source), dev hot-reload of a ``design.py``,
   and the Code tab (editor contents in place of the file).
 
@@ -91,6 +91,7 @@ def reload_design(source: str) -> str:
       "ok": True,
       "schema": ActiveDesign.Parameters.model_json_schema(),
       "presets": ActiveDesign.PRESETS,
+      "preset_label": ActiveDesign.PRESET_LABEL,
     }
   )
 

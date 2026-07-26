@@ -77,6 +77,9 @@ export type WorkerResponse
       ok: boolean
       schema?: JsonSchema
       presets?: Preset[]
+      // What the presets vary, in the design's words (`Design.PRESET_LABEL`) —
+      // titles the preset picker and the rule above the fields presets write.
+      presetLabel?: string
       error?: string
     }
   // Dev-only HMR signal: the SharedWorker is about to close itself because its
@@ -125,6 +128,11 @@ export interface JsonSchemaProperty {
   // `{ "cross_section": ["decagon", "dodecagon"] }`), a scalar by equality (e.g.
   // brim_diameter's `{ "brim": "ears" }`).
   show_if?: Record<string, unknown>
+  // This field belongs to the user, not to a preset: applying a preset restores
+  // it to its current value instead of the preset's/default one (the chain's link
+  // count, layout and center skip). It also splits the form — stable fields are
+  // declared first, and the preset rule sits above the first field that isn't one.
+  preset_stable?: boolean
   [key: string]: unknown
 }
 
@@ -140,8 +148,9 @@ export interface ShapeOption {
 }
 
 /**
- * A curated starting-point preset (see design.py `PRESETS`). `params` is a
- *  partial parameter set merged over the schema defaults when applied.
+ * A curated starting point (see design.py `PRESETS`). Applied by replacement:
+ *  the form rebuilds from the schema defaults, lays `params` over them, then
+ *  restores every `preset_stable` field to what the user had.
  */
 export interface Preset {
   name: string

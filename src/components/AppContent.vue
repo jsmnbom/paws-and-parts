@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DesignWorker } from '../composables/useDesignWorker'
-import type { JsonSchema } from '../lib/protocol'
+import type { JsonSchema, Preset } from '../lib/protocol'
 import { onKeyStroke, useClipboard, useDebounceFn, useLocalStorage } from '@vueuse/core'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -27,6 +27,8 @@ const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'))
 
 const {
   schema,
+  presets,
+  presetLabel,
   shapes,
   building,
   fieldErrors,
@@ -102,6 +104,75 @@ function defaultsFor(s: JsonSchema): Record<string, number | string> {
   return defaults
 }
 
+// --- Presets: one curated set of values for the fields a design says it owns. -//
+//
+// The design marks the parameters that are the *user's* (`preset_stable`: the
+// chain's link count, layout, center skip); a preset covers everything else and
+// is applied by replacement, so picking one always yields exactly the thing its
+// name promises without disturbing the chain you asked for.
+
+// The preset the current params came from, if any. Not just a click record: it's
+// re-derived when the form seeds, so a shared URL lights the right chip.
+const activePreset = ref<string | null>(null)
+
+// The fields a preset owns — the complement of the stable ones.
+const presetFields = computed(() =>
+  Object.entries(schema.value?.properties ?? {})
+    .filter(([, p]) => !p.preset_stable)
+    .map(([name]) => name),
+)
+
+/** What the form would hold if `p` were applied: defaults with the preset over them. */
+function presetTarget(p: Preset): Record<string, number | string> {
+  return { ...defaultsFor(schema.value!), ...p.params }
+}
+
+function matchesPreset(p: Preset): boolean {
+  const target = presetTarget(p)
+  return presetFields.value.every(name => params.value[name] === target[name])
+}
+
+/** The preset (if any) the current params are an exact match for. */
+function detectPreset(): string | null {
+  if (!schema.value)
+    return null
+  return presets.value.find(matchesPreset)?.name ?? null
+}
+
+function applyPreset(p: Preset) {
+  if (!schema.value)
+    return
+  const next = presetTarget(p)
+  // Hand the user's own parameters back, untouched.
+  for (const [name, prop] of Object.entries(schema.value.properties)) {
+    if (prop.preset_stable && params.value[name] !== undefined)
+      next[name] = params.value[name]
+  }
+  params.value = next
+  activePreset.value = p.name
+}
+
+// Tweaking a preset's field doesn't clear the selection, it marks it — the chip
+// stays lit as "where this came from" and offers a way back.
+const presetEdited = computed(() => {
+  const p = presets.value.find(x => x.name === activePreset.value)
+  return !!p && !matchesPreset(p)
+})
+
+const activeDescription = computed(() =>
+  presets.value.find(p => p.name === activePreset.value)?.description,
+)
+
+// Titles the rule ParamForm draws above the fields presets write. Falls away
+// entirely for a design that defines no presets.
+const presetGroupLabel = computed(() => {
+  if (!presets.value.length)
+    return undefined
+  if (!activePreset.value)
+    return presetLabel.value
+  return `${presetLabel.value} · ${activePreset.value}${presetEdited.value ? ', edited' : ''}`
+})
+
 // Seed the form whenever the schema arrives or changes. On the first load, URL
 // query params layer over the defaults so a shared link boots into its exact
 // configuration. On an in-place schema change (a Code-tab edit that alters
@@ -119,6 +190,9 @@ watch(schema, (s) => {
       kept[name] = params.value[name]
   }
   params.value = { ...defaults, ...urlParams, ...kept }
+  // Light whichever preset these values are, so a shared link (or an untouched
+  // form) shows what it's built from rather than a blank strip.
+  activePreset.value = detectPreset()
 }, { immediate: true })
 
 // Mirror the current params into the URL query (debounced), carrying only values
@@ -266,7 +340,56 @@ async function downloadExport(format: 'STEP' | '3MF') {
               Loading design…
             </div>
             <template v-else>
-              <ParamForm v-model="params" :schema="schema" :field-errors="fieldErrors" />
+              <!-- Preset strip: the design's curated starting points, bled to the
+                   pane edges so it reads as a header for the form below it. -->
+              <div
+                v-if="presets.length"
+                class="-mx-5 mb-5 border-b border-neutral-200 bg-neutral-50 px-5 py-3"
+                :class="reloadError ? '' : '-mt-5'"
+              >
+                <div class="flex items-baseline justify-between gap-2">
+                  <span class="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+                    {{ presetLabel }} preset
+                  </span>
+                  <UButton
+                    v-if="presetEdited && activePreset"
+                    size="xs"
+                    variant="link"
+                    color="primary"
+                    class="p-0"
+                    :label="`Reset to ${activePreset}`"
+                    @click="applyPreset(presets.find((p) => p.name === activePreset)!)"
+                  />
+                </div>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  <UTooltip
+                    v-for="p in presets"
+                    :key="p.name"
+                    :text="p.description"
+                    :delay-duration="0"
+                  >
+                    <UButton
+                      size="xs"
+                      :color="p.name === activePreset ? 'primary' : 'neutral'"
+                      :variant="p.name === activePreset ? 'solid' : 'outline'"
+                      @click="applyPreset(p)"
+                    >
+                      {{ p.name }}
+                      <span v-if="p.name === activePreset && presetEdited" class="opacity-75">· edited</span>
+                    </UButton>
+                  </UTooltip>
+                </div>
+                <p v-if="activeDescription" class="mt-2 text-xs text-neutral-500">
+                  {{ activeDescription }}
+                </p>
+              </div>
+
+              <ParamForm
+                v-model="params"
+                :schema="schema"
+                :field-errors="fieldErrors"
+                :preset-group-label="presetGroupLabel"
+              />
 
               <div v-if="report" class="mt-6 border-t border-neutral-200 pt-5">
                 <PrintabilityPanel :report="report" />

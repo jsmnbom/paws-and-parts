@@ -61,7 +61,12 @@ A design module exposes exactly one **`Design` subclass**:
 - **Instantiating** `Chain(params)` *builds* the geometry into `self` (a
   build123d `Compound`, like `BasePartObject`) — construction **is** the build.
 - `Chain.analyze(self) -> Report` (optional) returns the printability report,
-  reading `self` directly. `Chain.PRESETS` (optional) are curated starting points.
+  reading `self` directly. `Chain.PRESETS` (optional) are curated starting points,
+  titled by `PRESET_LABEL` ("Link shape"). A preset is applied by **replacement**
+  — schema defaults, the preset's `params` over them, then every field flagged
+  `preset_stable=True` (a `json_schema_extra` hint: the chain's link count,
+  layout, center skip) restored to the user's value. Designs declare their stable
+  fields first, so the form can rule off where the preset's territory starts.
 - Optional module-level `NAME` / `AUTHOR` / `DESCRIPTION` string constants, a
   `BLANK = True` flag, and a `LINKS` list (`{"label", "url"}` dicts → per-design
   footer links, icons auto-derived from the URL host) are scraped by `manifest.ts`

@@ -142,7 +142,13 @@ async function doBuild(params: unknown): Promise<BuildResult> {
 // traceback) rather than throwing; the previous design stays active.
 async function doReloadDesign(
   source: string,
-): Promise<{ ok: boolean, schema?: unknown, presets?: unknown, error?: string }> {
+): Promise<{
+  ok: boolean
+  schema?: unknown
+  presets?: unknown
+  preset_label?: string
+  error?: string
+}> {
   pyodide.globals.set('_design_src', source)
   const resultStr: string = await pyodide.runPythonAsync('reload_design(_design_src)')
   return JSON.parse(resultStr)
@@ -182,6 +188,7 @@ function schedule() {
               ok: true,
               schema: res.schema as JsonSchema,
               presets: (res.presets as Preset[]) ?? [],
+              presetLabel: res.preset_label,
             }
           : { type: 'design-reloaded', id, ok: false, error: res.error }
         // A reload-design *request* replies to its originating tab; a dev HMR

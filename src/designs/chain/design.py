@@ -24,7 +24,7 @@ from proto import *  # pyright: ignore[reportWildcardImportFromLibrary]
 # every field is optional (the manifest falls back to the slug). LINKS is the
 # per-design footer link list ({"label", "url"} dicts); each icon is auto-derived
 # from the URL's host.
-NAME = "Chain"
+NAME = "Print-in-place chain"
 AUTHOR = "jsmnbom"
 DESCRIPTION = "Parametric 3D-printable interlocking chains."
 LINKS = [
@@ -195,8 +195,26 @@ class Parameters(BaseModel):
 
   ``layout`` tiles the links either along a straight line or curled into a flat
   Archimedean spiral (a compact coil that still prints flat); both use the same
-  along-chain pitch, so links interlock identically."""
+  along-chain pitch, so links interlock identically.
 
+  Field order is the form's order, and the first three are the ``preset_stable``
+  ones — how much chain and how it's arranged, which is the user's call. The
+  ``PRESETS`` below own everything after them (one link shape each), so the form
+  can rule off where a preset's territory starts."""
+
+  link_count: int = Field(
+    default=6,
+    ge=1,
+    le=500,
+    json_schema_extra=slider_field(
+      "Link count",
+      1,
+      200,
+      step=1,
+      preset_stable=True,
+      description="Number of links in the chain.",
+    ),
+  )
   layout: Literal["line", "spiral"] = Field(
     default="line",
     json_schema_extra=cards_field(
@@ -215,6 +233,7 @@ class Parameters(BaseModel):
           "svg": outline_svg(_spiral_preview()),
         },
       ],
+      preset_stable=True,
       description="Arrange the links in a straight line or a flat Archimedean "
       "spiral. Both print flat and interlock the same way.",
     ),
@@ -230,6 +249,7 @@ class Parameters(BaseModel):
       step=1,
       show_if={"layout": "spiral"},
       size="xs",
+      preset_stable=True,
       description="How many link-slots to skip at the tight center of the spiral — "
       "raise it to open up the innermost turns.",
     ),
@@ -250,14 +270,6 @@ class Parameters(BaseModel):
       "Cross-section",
       preview=lambda m: m(1.0).wire(),
       size="lg",
-    ),
-  )
-  link_count: int = Field(
-    default=6,
-    ge=1,
-    le=500,
-    json_schema_extra=slider_field(
-      "Link count", 1, 200, step=1, description="Number of links in the chain."
     ),
   )
   link_length: float = Field(
@@ -287,7 +299,8 @@ class Parameters(BaseModel):
     ),
   )
   link_thickness: float = Field(
-    default=3.5,
+    # Matches the "Default" preset, so an untouched form is a lit Default chip.
+    default=3.2,
     gt=0,
     le=20.0,
     json_schema_extra=slider_field(
@@ -417,48 +430,63 @@ class Chain(Design[Parameters]):
   successive links interlock. Instantiating with a ``Parameters`` builds the
   geometry into ``self`` (a ``Compound``)."""
 
-  # Curated, manually-verified starting points offered by the form's preset
-  # picker. Each entry is ``{name, description, params}`` where ``params`` is a
-  # partial (or full) ``Parameters`` dict merged over the schema defaults on the
-  # frontend, so an entry only needs to spell out the fields it changes.
+  # Each preset is one link *shape* and nothing else — it names no
+  # ``preset_stable`` field, so picking one never changes how many links you asked
+  # for or whether they run in a line or a coil. Applied by replacement (see
+  # ``Design.PRESETS``), so every entry spells its shape out in full.
+  PRESET_LABEL: ClassVar[str] = "Link shape"
   PRESETS: ClassVar[list[dict]] = [
     {
       "name": "Default",
-      "description": "The stock chain — a balanced starting point.",
-      "params": {},
-    },
-    # TODO: replace the two entries below with real, print-verified values.
-    {
-      "name": "Chunky (placeholder)",
-      "description": "TODO: verified — short, thick links.",
+      "description": "Everyday chain — sturdy links at a comfortable size.",
       "params": {
-        "link_count": 5,
-        "link_length": 30.0,
-        "link_width": 18.0,
-        "link_thickness": 5.0,
-        "cross_section": "hexagon",
+        "link_shape": "chamfered",
+        "cross_section": "octagon",
+        "link_length": 25.0,
+        "link_width": 14.0,
+        "link_thickness": 3.0,
+        "tilt_mult": 1,
+        "brim": "none",
       },
     },
     {
-      "name": "Fine (placeholder)",
-      "description": "TODO: verified — many slim links.",
+      "name": "Smol",
+      "description": "Jewellery scale, with mouse ears so the tiny links stay put.",
       "params": {
-        "link_count": 12,
-        "link_length": 18.0,
-        "link_width": 9.0,
-        "link_thickness": 2.5,
-        "cross_section": "dodecagon",
+        "link_shape": "chamfered",
+        "cross_section": "octagon",
+        "link_length": 11.0,
+        "link_width": 6.0,
+        "link_thickness": 1.3,
+        "tilt_mult": 1,
+        "brim": "ears",
+        "brim_diameter": 4.0,
       },
     },
     {
-      "name": "Spiral coil",
-      "description": "A long chain curled into a flat spiral coil.",
+      "name": "Pretty",
+      "description": "Almost rounded links.",
       "params": {
-        "layout": "spiral",
-        "link_count": 60,
-        "spiral_skip": 20,
+        "link_shape": "chamfered",
         "cross_section": "dodecagon",
+        "link_length": 27.0,
+        "link_width": 17.0,
+        "link_thickness": 4.8,
         "tilt_mult": 2,
+        "brim": "none",
+      },
+    },
+    {
+      "name": "Large",
+      "description": "Heavy statement links, twelve-sided.",
+      "params": {
+        "link_shape": "chamfered",
+        "cross_section": "dodecagon",
+        "link_length": 60.0,
+        "link_width": 35.0,
+        "link_thickness": 10.0,
+        "tilt_mult": 2,
+        "brim": "none",
       },
     },
   ]

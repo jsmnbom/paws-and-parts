@@ -48,6 +48,8 @@ export function useDesignWorker() {
 
   const schema = ref<JsonSchema | null>(null)
   const presets = ref<Preset[]>([])
+  // What the active design's presets vary ("Link shape"), for the picker's title.
+  const presetLabel = ref('Preset')
   const shapes = shallowRef<Shapes | null>(null)
   const building = ref(false)
   const fieldErrors = ref<FieldError[]>([])
@@ -74,6 +76,7 @@ export function useDesignWorker() {
       bootError,
       schema,
       presets,
+      presetLabel,
       shapes,
       building,
       fieldErrors,
@@ -192,6 +195,7 @@ export function useDesignWorker() {
           reloadError.value = null
           schema.value = msg.schema ? resolveSchema(msg.schema) : null
           presets.value = msg.presets ?? []
+          presetLabel.value = msg.presetLabel ?? 'Preset'
         }
         else {
           // Keep the last-good schema on screen; surface the traceback inline.
@@ -272,6 +276,7 @@ export function useDesignWorker() {
     bootError,
     schema,
     presets,
+    presetLabel,
     shapes,
     building,
     fieldErrors,
