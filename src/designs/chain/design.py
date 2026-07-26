@@ -14,7 +14,6 @@ from proto import *  # pyright: ignore[reportWildcardImportFromLibrary]
 __author__ = "jsmnbom"
 __urls__ = {
   "Printables": "https://www.printables.com/@jsmnbom",
-  "GitHub": "https://github.com/jsmnbom/paws-and-parts",
 }
 
 

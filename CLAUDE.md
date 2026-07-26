@@ -73,6 +73,9 @@ A design module exposes exactly one **`Design` subclass**:
 - Gallery metadata is the module **docstring** (first line = name, rest =
   description) plus optional `__author__`, `__urls__` (`{label: url}` → per-design
   footer links, icons auto-derived from the URL host) and `__blank__ = True`.
+  `__urls__` is for *outbound* links only: `manifest.ts` appends a "Source" link
+  pointing at that design's own `design.py` at the build's commit (`__GIT_HASH__`,
+  `HEAD` in a dev build), so no design hardcodes a repo URL.
   `manifest.ts` scrapes them from the source text for the gallery card / generator
   footer (co-located so they can't drift; no Python boot needed to read them).
 - The generator header has a **Screenshot** button that saves a clean PNG of the

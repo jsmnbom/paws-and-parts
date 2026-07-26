@@ -10,7 +10,9 @@ from proto import *  # pyright: ignore[reportWildcardImportFromLibrary]
 # the description. `__blank__` flags it as the "start from scratch" card, which is
 # currently hidden (see src/views/Gallery.vue) — the in-app source view is
 # read-only, so there's no authoring path; this file stays as the scaffold to copy.
-# A real design also sets `__author__` and `__urls__` ({label: url} footer links).
+# A real design also sets `__author__` and `__urls__` ({label: url} footer links) —
+# outbound links only, since every design already links to its own source at the
+# build's commit (see `sourceUrl` in manifest.ts).
 #
 # This is the minimal thing the ``Design`` seam accepts: one pydantic parameter and
 # a build that turns it into geometry. Copy it, rename ``MyDesign``, and grow it.

@@ -67,15 +67,11 @@ onKeyStroke('Escape', () => {
 // set up to handle.
 const source = getDesign(props.slug)?.source ?? ''
 
-// Per-design footer links (Printables, shop, …), scraped from the design's LINKS
-// constant into the manifest. Empty for designs that declare none.
+// Per-design footer links: the design's own `__urls__` (Printables, shop, …) plus
+// the manifest's auto-generated link to this `design.py` at the build's commit,
+// which is also what the source view's ↗ button opens.
 const designLinks = getDesign(props.slug)?.links ?? []
-
-// Auto-generated link to this design's source `.py` on GitHub, pinned to the
-// build's commit for accuracy (falls back to HEAD outside a git checkout). This
-// replaces the old global commit link with a design-specific one.
-const sourceRef = __GIT_HASH__ === 'dev' ? 'HEAD' : __GIT_HASH__
-const sourceUrl = `${branding.repoUrl}/blob/${sourceRef}/src/designs/${props.slug}/design.py`
+const sourceUrl = getDesign(props.slug)?.sourceUrl
 
 // Split-button: the primary action remembers the last format the user picked.
 const exportFormat = useLocalStorage<'3MF' | 'STEP'>('lab-export-format', '3MF')

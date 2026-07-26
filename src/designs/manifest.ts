@@ -6,7 +6,11 @@
 // worker via `reload-design`) and its display metadata is scraped from the
 // module docstring (first line = name, rest = description) plus the `__author__`
 // / `__urls__` / `__blank__` dunders — co-located with the design so they can't
-// drift, and cheap to read without booting Python.
+// drift, and cheap to read without booting Python. A design never writes its own
+// repo link: `sourceUrl` here points each one at its own `design.py` at the
+// build's commit, so `__urls__` is for *outbound* links only (Printables, shop…).
+
+import { branding } from '../branding'
 
 /** A per-design outbound footer link. `icon` is resolved here (see ICON_BY_HOST). */
 export interface DesignLink {
@@ -28,7 +32,9 @@ export interface DesignMeta {
   thumb?: string
   /** The "start from scratch" starter — rendered distinctly, opens on the Code tab. */
   blank: boolean
-  /** Per-design footer links (from `__urls__`); empty if none declared. */
+  /** This design's own `design.py` on the forge, pinned to the build's commit. */
+  sourceUrl: string
+  /** Footer links: the design's `__urls__`, then the auto source link. */
   links: DesignLink[]
 }
 
@@ -134,9 +140,23 @@ function pyLinks(source: string): DesignLink[] {
   return links
 }
 
+/**
+ * Every design links to *itself* rather than to a hand-written repo URL: its
+ * `design.py` at the commit this bundle was built from, so the code a visitor
+ * opens is the code that just ran. `__GIT_HASH__` is stamped in by vite.config;
+ * outside a git checkout it's 'dev', where HEAD is the closest honest answer.
+ * The blob path is GitHub/Gitea shaped, matching `branding.repoUrl`.
+ */
+const SOURCE_REF = __GIT_HASH__ === 'dev' ? 'HEAD' : __GIT_HASH__
+
+function sourceUrlFor(slug: string): string {
+  return `${branding.repoUrl}/blob/${SOURCE_REF}/src/designs/${slug}/design.py`
+}
+
 function toMeta(path: string, source: string): DesignMeta {
   const slug = slugOf(path)
   const { name, description } = pyDocstring(source)
+  const sourceUrl = sourceUrlFor(slug)
   return {
     slug,
     name: name ?? slug,
@@ -145,7 +165,11 @@ function toMeta(path: string, source: string): DesignMeta {
     source,
     thumb: thumbs[`./${slug}/thumb.png`],
     blank: pyFlag(source, '__blank__'),
-    links: pyLinks(source),
+    sourceUrl,
+    links: [
+      ...pyLinks(source),
+      { label: 'Source', url: sourceUrl, icon: iconForUrl(sourceUrl) },
+    ],
   }
 }
 
