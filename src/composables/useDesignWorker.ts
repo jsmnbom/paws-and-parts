@@ -10,7 +10,6 @@ import type {
 } from '../lib/protocol'
 import { inject, onScopeDispose, ref, shallowRef } from 'vue'
 import { resolveSchema } from '../lib/resolveSchema'
-import { useMockDesignWorker } from './useMockDesignWorker'
 
 export type BootStatus = 'booting' | 'ready' | 'error'
 
@@ -32,15 +31,6 @@ const BUILD_DEBOUNCE_MS = 120
 const RELOAD_DEBOUNCE_MS = 250
 
 export function useDesignWorker() {
-  // UI-prototyping mode: skip the Pyodide/OCP boot entirely and serve a static
-  // schema with an empty viewer. Enabled via VITE_MOCK_WORKER (`pnpm dev:mock`).
-  // Returning here means the real Worker below is never constructed, so nothing
-  // is fetched from the CDN. In a normal build the flag is statically `undefined`,
-  // so this branch (and the mock) are dead-code-eliminated.
-  if (import.meta.env.VITE_MOCK_WORKER) {
-    return useMockDesignWorker()
-  }
-
   const status = ref<BootStatus>('booting')
   const bootStage = ref('Starting…')
   const bootProgress = ref(0)

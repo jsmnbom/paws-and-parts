@@ -25,7 +25,6 @@ pnpm install          # JS/TS deps
 uv sync --extra dev   # Python dev env, for authoring/type-checking src/python natively
 
 pnpm dev              # Vite dev server (http://localhost:5173)
-pnpm dev:mock         # ...Pyodide/OCP boot skipped, static schema, empty viewer (UI work)
 pnpm typecheck        # vue-tsc --noEmit
 pnpm build            # typecheck + production build to dist/
 uv run ruff format src/python   # formatting only (see below)
@@ -139,8 +138,7 @@ touching cross-boundary code.
   traceback instead of throwing).
 - `src/composables/useDesignWorker.ts` — worker lifecycle + reactive state (schema,
   shapes, building, fieldErrors, report, `reloadError`, `reloading`), debounced
-  `build` and `reloadDesign`, export. `useMockDesignWorker.ts` is the `dev:mock`
-  stand-in (serves the default design's schema fixture).
+  `build` and `reloadDesign`, export.
 - `src/components/` — `BootProgress`, `ParamForm`, `Viewer` (three-cad-viewer
   wrapper), `PrintabilityPanel`, `ShapeSelect`, `ShapePreview`, `AppContent` (the
   form + viewer body), `CodeEditor` (lazy Monaco; loads only when the source view is
@@ -188,13 +186,6 @@ Coupled invariants to keep in sync by hand:
   deps (IPython, ezdxf, scipy/sklearn/sympy, lib3mf) that build123d imports at
   load but this app's code paths don't exercise. `gen:wheels` reads this block to
   resolve requirements, so keep the markers intact.
-
-After changing the default design's (`src/designs/chain/design.py`) `Parameters`,
-regenerate the mock-mode schema snapshot so `pnpm dev:mock` stays accurate:
-
-```sh
-uv run python scripts/gen_schema_fixture.py   # → src/fixtures/schema.json
-```
 
 ## Linting / type-checking
 

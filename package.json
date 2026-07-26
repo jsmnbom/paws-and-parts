@@ -5,7 +5,6 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "dev:mock": "VITE_MOCK_WORKER=1 vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",

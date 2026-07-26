@@ -35,26 +35,9 @@ uv sync --extra dev   # Python dev env (build123d + pydantic) for authoring/type
 
 ```sh
 pnpm dev              # Vite dev server (http://localhost:5173)
-pnpm dev:mock         # ...with the Pyodide/OCP boot skipped (UI prototyping)
 pnpm typecheck        # vue-tsc
 pnpm build            # type-check + production build to dist/
 ```
-
-### UI mock mode
-
-`pnpm dev:mock` (or `VITE_MOCK_WORKER=1 pnpm dev`) swaps the Pyodide worker for a
-no-Python mock, so the app is `ready` instantly with no CAD-kernel download —
-handy for iterating on the form, layout, and export UI. It serves a static
-snapshot of the parameter schema (`src/fixtures/schema.json`) and leaves the
-viewer empty (there is no kernel to tessellate geometry). Regenerate the schema
-snapshot after changing `chain.py`'s `Parameters`:
-
-```sh
-uv run python scripts/gen_schema_fixture.py
-```
-
-The flag is statically `undefined` in a normal build, so the mock is
-dead-code-eliminated from production.
 
 The Python contract in `src/python/chain.py` (a `Design` subclass; see
 `src/python/proto.py`) can be exercised natively — it's the same source the worker
