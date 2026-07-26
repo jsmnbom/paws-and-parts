@@ -39,30 +39,31 @@ pnpm typecheck        # vue-tsc
 pnpm build            # type-check + production build to dist/
 ```
 
-The Python contract in `src/python/chain.py` (a `Design` subclass; see
+Each design in `src/designs/<slug>/design.py` (a `Design` subclass; see
 `src/python/proto.py`) can be exercised natively — it's the same source the worker
 runs:
 
 ```sh
 uv run python -c "import sys; sys.path.insert(0,'src/python'); \
-  import proto, chain; M = proto.load_model(vars(chain)); print(M(M.Parameters()))"
+  sys.path.insert(0,'src/designs/chain'); import proto, design; \
+  D = proto.load_design(vars(design)); print(D(D.Parameters()))"
 uv run ruff format src/python   # ruff is formatting-only; type-checking is Pylance (see .vscode/settings.json)
 ```
 
 ## Architecture
 
-- **`src/python/proto.py`** — the model-authoring SDK: the `Design` seam,
-  the `Report` builder, and the form-hint helpers. States the whole contract.
-- **`src/python/chain.py`** — the reference model: one `Design` subclass
-  (single source of truth for both the form and the geometry). This is the exact
-  seam the future Code tab plugs into.
+- **`src/python/proto.py`** — the design-authoring SDK: the `Design` seam, the
+  `Report` builder, and the field helpers. States the whole contract.
+- **`src/designs/<slug>/design.py`** — one design: a single `Design` subclass that
+  is the source of truth for both the form and the geometry (`chain` is the
+  reference one). `src/designs/manifest.ts` bundles them for the gallery.
 - **`src/python/install.py`** — one-time micropip install of the CAD stack in Pyodide.
-- **`src/python/runtime.py`** — binds the seam (`load_model`), routes ocp_vscode
+- **`src/python/runtime.py`** — binds the seam (`load_design`), routes ocp_vscode
   tessellation through a host bridge (no socket), and exposes schema / build /
   export / hot-reload helpers.
 - **`src/worker/pyodide.worker.ts`** — loads Pyodide + the CAD stack once, then
   serves debounced, latest-wins build requests and STEP exports.
-- **`src/composables/useChainWorker.ts`** — worker lifecycle + reactive state.
+- **`src/composables/useDesignWorker.ts`** — worker lifecycle + reactive state.
 - **`src/components/`** — `BootProgress`, `ParamForm` (generated from the JSON
   schema), `Viewer` (three-cad-viewer wrapper).
 

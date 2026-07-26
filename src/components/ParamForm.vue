@@ -162,9 +162,23 @@ function setValue(name: string, value: number | string) {
 
 // Intl.NumberFormat's `style: 'unit'` only accepts CLDR-sanctioned unit
 // identifiers ("millimeter", "degree", …) and throws a RangeError on anything
-// else ("mm", "°", "links"). Rather than force design authors onto that list,
-// fall back to plain decimal formatting for units Intl can't render, so an
-// unsupported unit degrades to a bare number instead of crashing the form.
+// else ("mm", "°", "links"). Designs write the everyday symbol, so map the common
+// ones onto their CLDR name first…
+const UNIT_ALIASES: Record<string, string> = {
+  'mm': 'millimeter',
+  'cm': 'centimeter',
+  'm': 'meter',
+  'g': 'gram',
+  'deg': 'degree',
+  '°': 'degree',
+}
+function resolveUnit(unit: string): string {
+  return UNIT_ALIASES[unit] ?? unit
+}
+
+// …and for anything still outside the list ("links", "layers"), fall back to
+// plain decimal formatting, so an unsupported unit degrades to a bare number
+// instead of crashing the form.
 function isSupportedUnit(unit: string): boolean {
   try {
     // eslint-disable-next-line no-new
@@ -177,10 +191,11 @@ function isSupportedUnit(unit: string): boolean {
 }
 
 function numberFormatOptions(f: SliderField) {
-  if (f.unit && isSupportedUnit(f.unit)) {
+  const unit = f.unit ? resolveUnit(f.unit) : undefined
+  if (unit && isSupportedUnit(unit)) {
     return {
       style: 'unit',
-      unit: f.unit,
+      unit,
       unitDisplay: 'narrow',
     }
   }

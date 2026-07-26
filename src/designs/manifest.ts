@@ -3,10 +3,10 @@
 // specific design's internals. Paws & Parts is just this `src/designs/` set.
 //
 // Each `src/designs/<slug>/design.py` is bundled as raw source (sent to the
-// worker via `reload-design`) and its display metadata is scraped from
-// module-level string constants (NAME / AUTHOR / DESCRIPTION), the BLANK flag,
-// and the LINKS list (per-design footer links) — co-located with the design so
-// they can't drift, and cheap to read without booting Python.
+// worker via `reload-design`) and its display metadata is scraped from the
+// module docstring (first line = name, rest = description) plus the `__author__`
+// / `__urls__` / `__blank__` dunders — co-located with the design so they can't
+// drift, and cheap to read without booting Python.
 
 /** A per-design outbound footer link. `icon` is resolved here (see ICON_BY_HOST). */
 export interface DesignLink {
@@ -18,7 +18,7 @@ export interface DesignLink {
 export interface DesignMeta {
   /** URL slug and directory name, e.g. "chain" → /m/chain. */
   slug: string
-  /** Display name (NAME constant, falls back to the slug). */
+  /** Display name (the docstring's first line, falls back to the slug). */
   name: string
   author?: string
   description?: string
@@ -28,7 +28,7 @@ export interface DesignMeta {
   thumb?: string
   /** The "start from scratch" starter — rendered distinctly, opens on the Code tab. */
   blank: boolean
-  /** Per-design footer links (from the LINKS constant); empty if none declared. */
+  /** Per-design footer links (from `__urls__`); empty if none declared. */
   links: DesignLink[]
 }
 
@@ -51,15 +51,30 @@ function slugOf(path: string): string {
   return path.split('/')[1]
 }
 
-/** Read a module-level string constant (`NAME = "…"`). */
+/** Read a module-level string constant (`__author__ = "…"`). */
 function pyString(source: string, name: string): string | undefined {
   const m = source.match(new RegExp(`^${name}\\s*=\\s*(['"])([\\s\\S]*?)\\1`, 'm'))
   return m?.[2]
 }
 
-/** Read a module-level truthy boolean flag (`BLANK = True`). */
+/** Read a module-level truthy boolean flag (`__blank__ = True`). */
 function pyFlag(source: string, name: string): boolean {
   return new RegExp(`^${name}\\s*=\\s*True\\b`, 'm').test(source)
+}
+
+/**
+ * The module docstring, split into the design's name (its first line) and
+ * description (everything after, with the blank separator line collapsed) — the
+ * same convention `proto.py`'s `Choice` uses for its members. A module docstring
+ * is by definition the first statement, so it's anchored to the file start.
+ */
+function pyDocstring(source: string): { name?: string, description?: string } {
+  const m = source.match(/^\s*(?:[a-zA-Z]*)("""|''')([\s\S]*?)\1/)
+  if (!m)
+    return {}
+  const [first, ...rest] = m[2].trim().split('\n')
+  const description = rest.join('\n').trim()
+  return { name: first.trim() || undefined, description: description || undefined }
 }
 
 // Host → brand icon. Written as literal icon names so the build-time
@@ -105,35 +120,31 @@ function iconForUrl(url: string): string {
 }
 
 /**
- * Scrape the module-level `LINKS` list of `{"label": ..., "url": ...}` dicts.
- * Values are flat strings (no nested brackets), so a non-greedy match to the
- * first `]` closes the list; per-link icons are resolved from the URL host.
+ * Scrape the module-level `__urls__ = {"Printables": "https://…", …}` dict into
+ * footer links. Values are flat strings (no nesting), so a non-greedy match to
+ * the first `}` closes it; per-link icons are resolved from the URL host.
  */
 function pyLinks(source: string): DesignLink[] {
-  const block = source.match(/^LINKS\s*=\s*\[([\s\S]*?)\]/m)
+  const block = source.match(/^__urls__\s*=\s*\{([\s\S]*?)\}/m)
   if (!block)
     return []
   const links: DesignLink[] = []
-  for (const dict of block[1].matchAll(/\{([^}]*)\}/g)) {
-    const fields: Record<string, string> = {}
-    for (const kv of dict[1].matchAll(/(['"])(label|url)\1\s*:\s*(['"])([\s\S]*?)\3/g))
-      fields[kv[2]] = kv[4]
-    if (fields.label && fields.url)
-      links.push({ label: fields.label, url: fields.url, icon: iconForUrl(fields.url) })
-  }
+  for (const kv of block[1].matchAll(/(['"])(.*?)\1\s*:\s*(['"])(.*?)\3/g))
+    links.push({ label: kv[2], url: kv[4], icon: iconForUrl(kv[4]) })
   return links
 }
 
 function toMeta(path: string, source: string): DesignMeta {
   const slug = slugOf(path)
+  const { name, description } = pyDocstring(source)
   return {
     slug,
-    name: pyString(source, 'NAME') ?? slug,
-    author: pyString(source, 'AUTHOR'),
-    description: pyString(source, 'DESCRIPTION'),
+    name: name ?? slug,
+    author: pyString(source, '__author__'),
+    description,
     source,
     thumb: thumbs[`./${slug}/thumb.png`],
-    blank: pyFlag(source, 'BLANK'),
+    blank: pyFlag(source, '__blank__'),
     links: pyLinks(source),
   }
 }

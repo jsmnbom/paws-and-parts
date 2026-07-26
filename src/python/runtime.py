@@ -15,7 +15,10 @@ there is no decode step on the JS side.
 import builtins
 import io
 import json
+import linecache
+import sys
 import traceback
+import types
 
 import build123d as b3d
 from ocp_tessellate.convert import tessellate_group, to_ocpgroup
@@ -48,49 +51,60 @@ def get_presets_json() -> str:
   the loaded design defines none (see ``Design.PRESETS``)."""
   if ActiveDesign is None:
     return json.dumps([])
-  return json.dumps(ActiveDesign.PRESETS)
+  return json.dumps(ActiveDesign.presets_json())
+
+
+# The module a design's source is loaded as. It is a *real* module (registered in
+# ``sys.modules``, with its source in ``linecache``) rather than a bare dict, which
+# buys two things: pydantic resolves the design's ``from __future__`` string
+# annotations through the module namespace, and it can read each field's attribute
+# docstring back out of the source — that is how a field's description reaches the
+# form. Natively a design.py is imported as a file and gets both for free.
+_DESIGN_MODULE = "design"
+_DESIGN_FILE = "<design>"
 
 
 def reload_design(source: str) -> str:
-  """Swap in a new design module without rebooting Pyodide: exec ``source`` in a
-  fresh namespace, rebind ``ActiveDesign`` to its ``Design`` subclass, and return
-  the fresh ``{"ok", "schema", "presets", "preset_label"}`` for the form. Drives design selection
-  from the gallery (a bundled design's source), dev hot-reload of a ``design.py``,
-  and the Code tab (editor contents in place of the file).
+  """Swap in a new design module without rebooting Pyodide: load ``source`` as the
+  ``design`` module, rebind ``ActiveDesign`` to its ``Design`` subclass, and return
+  the fresh ``{"ok", "schema", "presets", "preset_label"}`` for the form. Drives
+  design selection from the gallery (a bundled design's source) and dev hot-reload
+  of a ``design.py``.
 
-  On failure the previous ``ActiveDesign`` is left untouched (rebind happens only
-  after a successful load) and ``{"ok": false, "error": <traceback>}`` is returned
-  so the Code tab can render the compile/exec error inline."""
+  On failure the previous ``ActiveDesign`` (and the previous module) is left
+  untouched and ``{"ok": false, "error": <traceback>}`` is returned, so a bad edit
+  surfaces its traceback instead of taking the app down."""
   global ActiveDesign
-  # Exec into this module's own globals (``__main__`` in the worker) so pydantic
-  # can resolve the design's forward refs via a registered module namespace — a
-  # bare dict would leave ``Parameters`` "not fully defined". First drop any
-  # previously-loaded Design subclass so a *renamed* design (Code tab) doesn't
-  # collide with its predecessor under load_design's one-design rule. Exec into a
-  # copy so a failed load doesn't leave half-defined names polluting globals.
-  g = globals()
-  scratch = dict(g)
-  for name in [
-    n
-    for n, v in list(scratch.items())
-    if isinstance(v, type) and v is not Design and issubclass(v, Design)
-  ]:
-    del scratch[name]
+  previous = sys.modules.get(_DESIGN_MODULE), linecache.cache.get(_DESIGN_FILE)
+  module = types.ModuleType(_DESIGN_MODULE)
+  module.__file__ = _DESIGN_FILE
   try:
-    exec(compile(source, "<design>", "exec"), scratch)
-    design = load_design(scratch)
+    # Both must be in place *before* the exec: pydantic resolves annotations and
+    # reads attribute docstrings while the class body runs.
+    linecache.cache[_DESIGN_FILE] = (
+      len(source),
+      None,  # no mtime -> checkcache leaves this synthetic entry alone
+      source.splitlines(True),
+      _DESIGN_FILE,
+    )
+    sys.modules[_DESIGN_MODULE] = module
+    exec(compile(source, _DESIGN_FILE, "exec"), module.__dict__)
+    design = load_design(vars(module))
   except Exception:
+    prev_module, prev_lines = previous
+    sys.modules.pop(_DESIGN_MODULE, None)
+    linecache.cache.pop(_DESIGN_FILE, None)
+    if prev_module is not None:
+      sys.modules[_DESIGN_MODULE] = prev_module
+    if prev_lines is not None:
+      linecache.cache[_DESIGN_FILE] = prev_lines
     return json.dumps({"ok": False, "error": traceback.format_exc()})
-  # Commit the successfully-loaded names into the real globals and rebind.
-  for name in [n for n in g if n not in scratch]:
-    del g[name]
-  g.update(scratch)
   ActiveDesign = design
   return json.dumps(
     {
       "ok": True,
       "schema": ActiveDesign.Parameters.model_json_schema(),
-      "presets": ActiveDesign.PRESETS,
+      "presets": ActiveDesign.presets_json(),
       "preset_label": ActiveDesign.PRESET_LABEL,
     }
   )

@@ -60,17 +60,21 @@ A design module exposes exactly one **`Design` subclass**:
 - **Instantiating** `Chain(params)` *builds* the geometry into `self` (a
   build123d `Compound`, like `BasePartObject`) — construction **is** the build.
 - `Chain.analyze(self) -> Report` (optional) returns the printability report,
-  reading `self` directly. `Chain.PRESETS` (optional) are curated starting points,
+  reading `self` directly. `Chain.PRESETS` (optional) are curated starting points
+  — `Preset(name, description, params=Parameters(...))`, so each holds a *real
+  validated* `Parameters` and everything it doesn't name keeps the field default —
   titled by `PRESET_LABEL` ("Link shape"). A preset is applied by **replacement**
   — schema defaults, the preset's `params` over them, then every field flagged
   `preset_stable=True` (a `json_schema_extra` hint: the chain's link count,
-  layout, center skip) restored to the user's value. Designs declare their stable
-  fields first, so the form can rule off where the preset's territory starts.
-- Optional module-level `NAME` / `AUTHOR` / `DESCRIPTION` string constants, a
-  `BLANK = True` flag, and a `LINKS` list (`{"label", "url"}` dicts → per-design
-  footer links, icons auto-derived from the URL host) are scraped by `manifest.ts`
-  for the gallery card / generator footer (co-located so they can't drift; no
-  Python boot needed to read them).
+  layout, center skip) restored to the user's value. `Design.presets_json()` drops
+  the stable fields on the way out, so a preset can never name one. Designs declare
+  their stable fields first, so the form can rule off where the preset's territory
+  starts.
+- Gallery metadata is the module **docstring** (first line = name, rest =
+  description) plus optional `__author__`, `__urls__` (`{label: url}` → per-design
+  footer links, icons auto-derived from the URL host) and `__blank__ = True`.
+  `manifest.ts` scrapes them from the source text for the gallery card / generator
+  footer (co-located so they can't drift; no Python boot needed to read them).
 - The generator header has a **Screenshot** button that saves a clean PNG of the
   current view (via the viewer's `captureScreenshot`, axes/marker stripped). It's a
   general-purpose save, and also the way to make a design's gallery-card
@@ -81,29 +85,39 @@ A design module exposes exactly one **`Design` subclass**:
 `runtime.py` binds to this via `proto.load_design(namespace)`, holding the active
 subclass as `ActiveDesign` — it never reaches for loose `build`/`analyze` globals.
 The engine boots **without** a design; the frontend selects one by slug and
-`reload_design(source)` execs it and rebinds `ActiveDesign`. Keep the contract clean; don't leak chain-specifics into
+`reload_design(source)` loads it as the `design` module and rebinds `ActiveDesign`.
+Keep the contract clean; don't leak chain-specifics into
 `proto.py`/the worker/runtime/frontend.
 
 - Cross-field rules (`link_width >= link_thickness`, etc.) live in a pydantic
   `@model_validator(mode="after")`, **not** duplicated in JS. The form learns
   about violations by attempting a build and rendering the returned
   `ValidationError` inline. There is no separate client-side validation.
-- Widget hints ride on each `Field` via `json_schema_extra` — use `proto.py`'s
-  `slider_field` / `choice_field` / `select_field`, each of which stamps a
-  `widget` discriminator (`"slider"`/`"shape"`/`"select"`) the form switches on.
-  Add a new parameter type by adding a helper there + a branch in `ParamForm.vue`.
-  "How to show the form" stays co-located with the design. The schema→component
-  mapping is in `src/components/ParamForm.vue`; `src/lib/resolveSchema.ts` flattens
-  pydantic's `$ref`/`$defs` first.
+- A parameter is declared with one of `proto.py`'s field helpers — `SliderField` /
+  `ChoiceField` / `SelectField` / `CardsField` — which wrap pydantic's `Field`:
+  they take the validation bounds *and* the widget hints, stamping a `widget`
+  discriminator (`"slider"`/`"shape"`/`"select"`/`"cards"`) into
+  `json_schema_extra` that the form switches on. **The helper you call is what
+  picks the widget**; `Option(value, label, description, wire=...)` is the shared
+  option type for `SelectField`/`CardsField` (`wire` is an optional preview both
+  render). A field's **attribute docstring** is its description — `proto.BaseModel`
+  sets `use_attribute_docstrings=True`, which is why `reload_design` must give the
+  design a real module identity (below). Add a new parameter type by adding a
+  helper there + a branch in `ParamForm.vue`. "How to show the form" stays
+  co-located with the design. The schema→component mapping is in
+  `src/components/ParamForm.vue`; `src/lib/resolveSchema.ts` flattens pydantic's
+  `$ref`/`$defs` first.
 - The printability report is a flat list of findings built with `proto.Report`
   (`r.add(label, value, ...)`, auto-rolled `overall_status`/`summary`; `value` is
   numeric). Its `to_dict()` is mirrored by `PrintabilityReport` in `protocol.ts` and
-  rendered generically by `PrintabilityPanel.vue`. Generic finding-builders live in
-  `proto.py` (`check_bed_contact` / `check_interlock` / `check_floating` — they take a
-  `Report` and add a finding, owning default thresholds/wording any design can reuse);
-  design-specific choices (which face is the footprint, brim messaging, the chain's link
-  lean) stay in the design's `analyze`. `Design.analyze`'s default is an empty report —
-  a design opts into checks by calling the helpers.
+  rendered generically by `PrintabilityPanel.vue`. The generic checks are `Report`
+  methods (`check_geometry` / `check_bed_contact` / `check_overlap` /
+  `check_floating` — each adds a finding, owning default thresholds/wording any
+  design can reuse), alongside the printing constants `FIRST_LAYER_HEIGHT` /
+  `MAX_OVERHANG_DEG`; design-specific choices (which face is the footprint, brim
+  messaging, the chain's link lean) stay in the design's `analyze`.
+  `Design.analyze`'s default is an empty report — a design opts into checks by
+  calling the methods.
 - `proto.py`'s `Choice` is a lightweight enum-like whose members are static
   methods (docstring → label/description) and whose SVG previews are generated
   from the *real* build123d outline, so previews can't drift from the geometry.
@@ -133,9 +147,13 @@ touching cross-boundary code.
   `reload_design`), and exposes worker-facing helpers: `get_schema_json`,
   `build_and_show` (validate → `ActiveDesign(params)` build → tessellate →
   `obj.analyze()`), `export_bytes` (STEP via build123d; 3MF OrcaSlicer project via
-  orca123d), and `reload_design` (re-exec a design in place — gallery select / dev
-  hot-reload; returns `{ok, schema?, presets?, error?}`, surfacing a bad edit's
-  traceback instead of throwing).
+  orca123d), and `reload_design` (gallery select / dev hot-reload; returns
+  `{ok, schema?, presets?, error?}`, surfacing a bad edit's traceback instead of
+  throwing). It loads the source as a **real `design` module** (registered in
+  `sys.modules`, source in `linecache`) rather than exec'ing it into a dict: that
+  is what lets pydantic resolve the design's string annotations *and* read each
+  field's attribute docstring back out of the source. A failed load restores the
+  previous module and leaves `ActiveDesign` bound.
 - `src/composables/useDesignWorker.ts` — worker lifecycle + reactive state (schema,
   shapes, building, fieldErrors, report, `reloadError`, `reloading`), debounced
   `build` and `reloadDesign`, export.

@@ -101,9 +101,10 @@ export interface JsonSchemaProperty {
   // widget hints (json_schema_extra). `widget` is the discriminator the form
   // switches on (see ParamForm.vue): "slider" (numeric), "shape" (choice with a
   // geometry-derived preview SVG), "select" (plain enum/Literal dropdown). New
-  // parameter types add a value here + a branch there. Set by proto.py's
-  // slider_field / choice_field / select_field / cards_field. "cards" is a small
-  // set of mutually-exclusive options laid out as big inline tiles (not a dropdown).
+  // parameter types add a value here + a branch there. Set by proto.py's field
+  // helpers — SliderField / ChoiceField / SelectField / CardsField, one per
+  // widget. "cards" is a small set of mutually-exclusive options laid out as big
+  // inline tiles (not a dropdown).
   widget?: 'slider' | 'shape' | 'select' | 'cards'
   label?: string
   unit?: string
@@ -137,8 +138,9 @@ export interface JsonSchemaProperty {
 }
 
 /**
- * One choice in a shape/cross-section dropdown. `svg` is generated from the real
- *  build123d outline (see design.py `_choice_field`) so previews match the geometry.
+ * One choice in a shape/cross-section dropdown or card. `svg` is generated from
+ *  the real build123d outline (proto.py's `outline_svg`) so previews match the
+ *  geometry.
  */
 export interface ShapeOption {
   value: number | string
@@ -148,9 +150,10 @@ export interface ShapeOption {
 }
 
 /**
- * A curated starting point (see design.py `PRESETS`). Applied by replacement:
- *  the form rebuilds from the schema defaults, lays `params` over them, then
- *  restores every `preset_stable` field to what the user had.
+ * A curated starting point (a design's `PRESETS`). Applied by replacement: the
+ *  form rebuilds from the schema defaults, lays `params` over them, then restores
+ *  every `preset_stable` field to what the user had. `params` arrives with the
+ *  stable fields already stripped (see `Design.presets_json`).
  */
 export interface Preset {
   name: string
