@@ -26,18 +26,20 @@ __urls__ = {
 # stays one interconnected module.
 
 
-ChainLinkOutlineBuilder = Callable[[float, float], "Wire"]
+ChainLinkOutlineBuilder = Callable[[float, float, float], "Wire"]
 
 
 class ChainLinkOutline(Choice[ChainLinkOutlineBuilder]):
   """Link centerline outlines. Each builds a closed ``Wire`` from the half-extents
-  ``(cx, cy)`` — used both as the sweep path and, at icon size, the form preview.
-  Returns a ``Wire`` (not a raw BuildLine ``Curve``); ExportSVG IndexErrors on a
+  ``(cx, cy)`` and a ``chamfer`` angle — used both as the sweep path and, at icon
+  size, the form preview. Only ``stadium`` reads ``chamfer``; everywhere else it
+  stays inert, the way ``brim_diameter`` does when ``brim != "ears"``. Returns a
+  ``Wire`` (not a raw BuildLine ``Curve``); ExportSVG IndexErrors on a
   straight-line ``Curve``."""
 
   @member
   @staticmethod
-  def rect(cx: float, cy: float) -> Wire:
+  def rect(cx: float, cy: float, chamfer: float) -> Wire:
     """Rectangle
 
     Sharp 90° corners — prints best, but looks ugly."""
@@ -47,7 +49,7 @@ class ChainLinkOutline(Choice[ChainLinkOutlineBuilder]):
 
   @member
   @staticmethod
-  def chamfered(cx: float, cy: float) -> Wire:
+  def chamfered(cx: float, cy: float, chamfer: float) -> Wire:
     """Chamfered rect
 
     Corners cut flat at 45° — prints well and looks better than a rectangle."""
@@ -68,7 +70,44 @@ class ChainLinkOutline(Choice[ChainLinkOutlineBuilder]):
 
   @member
   @staticmethod
-  def rounded(cx: float, cy: float) -> Wire:
+  def stadium(cx: float, cy: float, chamfer: float) -> Wire:
+    """Chamfered stadium
+
+    Semicircular ends cut flat top and bottom — prints like the chamfered rect,
+    but the round ends let a hanging chain centre itself."""
+    # Hanging, the chain's axis is vertical, so two links bear on each other at the
+    # middle of an end — where a rectangular outline offers a straight bar and the
+    # link settles against one corner or the other. A semicircular end puts the low
+    # point in the middle instead. It can't be printed bare, though: at the *bottom*
+    # corner the bar's outer surface curves up off the bed, and at the *top* corner
+    # its inner surface closes the hole's ceiling. So both are cut back to a tangent
+    # line, leaving the arc that spans ±`chamfer` about the equator — i.e. exactly
+    # the stretch the links bear on. `chamfer` is the angle from vertical, so it is
+    # also the end's steepest overhang: 0° collapses to `rect`, 90° is the bare
+    # stadium, and MAX_OVERHANG_DEG is the roundest that still prints.
+    if chamfer <= 0:
+      # The arc vanishes and the tangents stand straight up at (±cx, ±cy) — the
+      # limit case is `rect`, and a zero-size CenterArc would fail to build.
+      return ChainLinkOutline.rect(cx, cy, chamfer)
+
+    a = math.radians(chamfer)
+    e = cx - cy  # arc centres, inboard by the arc radius (cy); cx >= cy always
+    # Reach in X of the tangent from the kept arc to the rail. The tangent length
+    # and its X extent coincide here, and collapse to cy·tan(45° - chamfer/2).
+    k = cy * math.tan(math.radians(45.0) - a / 2)
+    px, py = e + cy * math.cos(a), cy * math.sin(a)  # where the arc gives way
+    qx = e + k  # where the tangent meets the rail
+
+    with BuildLine() as bl:
+      CenterArc((e, 0), cy, -chamfer, 2 * chamfer)
+      Polyline((px, py), (qx, cy), (-qx, cy), (-px, py))
+      CenterArc((-e, 0), cy, 180 - chamfer, 2 * chamfer)
+      Polyline((-px, -py), (-qx, -cy), (qx, -cy), (px, -py))
+    return bl.wire()
+
+  @member
+  @staticmethod
+  def rounded(cx: float, cy: float, chamfer: float) -> Wire:
     """Rounded rect
 
     Smoothly filleted corners — prints poorly but theoretically looks best."""
@@ -229,10 +268,25 @@ class Parameters(BaseModel):
     default=ChainLinkOutline.chamfered,
     name="Link shape",
     choices=ChainLinkOutline,
-    preview=lambda m: m(2.0, 1.2),  # representative icon size
+    preview=lambda m: m(2.0, 1.2, MAX_OVERHANG_DEG),  # representative icon size
     size="lg",
   )
   """The centerline the link's bar is swept along."""
+
+  end_chamfer: float = SliderField(
+    default=MAX_OVERHANG_DEG,
+    name="End chamfer",
+    ge=0.0,
+    # Capped at the overhang limit, so the slider can't ask for an end that needs
+    # support; below it the ends trade roundness for a wider flat, and 0 is a rect.
+    le=MAX_OVERHANG_DEG,
+    step=1,
+    unit="°",
+    show_if={"link_shape": "stadium"},
+    size="xs",
+  )
+  """How far the stadium's round ends are cut back — the flats' angle from
+  vertical, and so the steepest overhang the ends reach."""
 
   cross_section: ChainLinkCrossSection = ChoiceField(
     default=ChainLinkCrossSection.octagon,
@@ -352,6 +406,7 @@ class ChainLink(BasePartObject):
     width: float = 12.0,
     thickness: float = 4.0,
     outline: ChainLinkOutlineBuilder = ChainLinkOutline.chamfered,
+    chamfer: float = MAX_OVERHANG_DEG,
     cross_section: ChainLinkCrossSectionBuilder = ChainLinkCrossSection.octagon,
     rotation: RotationLike = (0, 0, 0),
     align: Align | tuple[Align, Align, Align] = Align.CENTER,
@@ -366,7 +421,7 @@ class ChainLink(BasePartObject):
 
     cx = length / 2 - thickness / 2  # half-width of centerline outline in X
     cy = width / 2 - thickness / 2  # half-width of centerline outline in Y
-    path = outline(cx, cy)  # closed centerline wire for this outline
+    path = outline(cx, cy, chamfer)  # closed centerline wire for this outline
     radius = thickness / 2
 
     # Regular-polygon cross-section swept along the path.
@@ -445,6 +500,7 @@ class Chain(Design[Parameters]):
       width=params.link_width,
       thickness=params.link_thickness,
       outline=params.link_shape,
+      chamfer=params.end_chamfer,
       cross_section=params.cross_section,
       mode=Mode.PRIVATE,
     )

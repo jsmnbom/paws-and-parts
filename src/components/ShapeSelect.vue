@@ -44,7 +44,7 @@ const previewPx = computed(() => PREVIEW_PX[props.size])
     label-key="label"
     :search-input="false"
     class="w-full"
-    :ui="{ content: 'max-h-96', viewport: 'max-h-96' }"
+    :ui="{ content: 'max-h-96', viewport: 'max-h-96', itemDescription: 'text-clip whitespace-normal' }"
     @update:model-value="(v: number | string) => emit('update:modelValue', v)"
   >
     <!-- Trigger: preview + label of the current value. -->
@@ -61,8 +61,10 @@ const previewPx = computed(() => PREVIEW_PX[props.size])
     </template>
 
     <!-- A muted description subtitle (from the choice member's docstring), via
-         USelectMenu's own description slot so it isn't rendered twice.
-         Enough vertical room is reserved above so all members show without a scroll. -->
+         USelectMenu's own description slot so it isn't rendered twice. It's wrapped
+         (the `ui.itemDescription` override cancels the theme's default `truncate`)
+         since these run longer than one line; `max-h-96` above still fits every
+         member without a scroll. -->
     <template #item-description="{ item }">
       <span class="text-xs text-neutral-500">{{ (item as ShapeOption).description }}</span>
     </template>

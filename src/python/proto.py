@@ -57,7 +57,8 @@ from typing import (
 )
 
 import pydantic
-from build123d import Compound, ExportSVG, Shape, Wire
+from build123d import Compound, ExportSVG, Wire
+from build123d.topology.shape_core import Shape
 from ocp_tessellate.ocp_utils import dist_shapes
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
