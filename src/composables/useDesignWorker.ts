@@ -1,6 +1,7 @@
 import type { Shapes } from 'three-cad-viewer'
 import type { InjectionKey } from 'vue'
 import type {
+  BuildStage,
   FieldError,
   JsonSchema,
   Preset,
@@ -31,7 +32,13 @@ export function injectDesignWorker(): DesignWorker {
   return worker
 }
 
-const BUILD_DEBOUNCE_MS = 120
+// A change arriving more than this long after the previous one is a discrete
+// action — a preset chip, a shape card, one deliberate nudge — and is built at
+// once, so a click never feels like it hung. Anything closer together is part of
+// a burst (dragging a slider, tapping a stepper) where only where it lands
+// matters, and the trailing timer keeps resetting until the burst stops.
+const BUILD_IDLE_GAP_MS = 600
+const BUILD_TRAILING_MS = 120
 const RELOAD_DEBOUNCE_MS = 250
 
 export function useDesignWorker() {
@@ -45,7 +52,12 @@ export function useDesignWorker() {
   // What the active design's presets vary ("Link shape"), for the picker's title.
   const presetLabel = ref('Preset')
   const shapes = shallowRef<Shapes | null>(null)
-  const building = ref(false)
+  // The phase the worker is in, or null when no build is running. Drives the
+  // viewer's progress bar; see BuildStage in protocol.ts for why it's this coarse.
+  const buildStage = ref<BuildStage | null>(null)
+  // True from the moment params change until a result lands — so the debounce
+  // window and the worker's queue both read as "busy", not as idle.
+  const buildPending = ref(false)
   const fieldErrors = ref<FieldError[]>([])
   const report = ref<PrintabilityReport | null>(null)
   // The active design's source is exec'd in the worker; a compile/exec traceback
@@ -72,7 +84,8 @@ export function useDesignWorker() {
       presets,
       presetLabel,
       shapes,
-      building,
+      buildStage,
+      buildPending,
       fieldErrors,
       report,
       reloadError,
@@ -94,6 +107,7 @@ export function useDesignWorker() {
   let bootStart = 0
   // eslint-disable-next-line no-console
   const log = (...args: unknown[]) => console.info('[lab]', ...args)
+  const fmtMs = (ms: number | undefined) => ms === undefined ? '—' : `${ms.toFixed(1)}ms`
 
   // Nothing is fetched until this is called. Constructing the SharedWorker is what
   // kicks off the multi-megabyte kernel download, so it's deliberately *not* a side
@@ -123,6 +137,9 @@ export function useDesignWorker() {
 
   let nextId = 1
   let latestBuildId = 0
+  // The build whose geometry is currently on screen, so a frame can't be
+  // rendered out of order (see the `shapes` case).
+  let shownBuildId = 0
   let latestReloadId = 0
   let buildTimer: ReturnType<typeof setTimeout> | null = null
   let reloadTimer: ReturnType<typeof setTimeout> | null = null
@@ -156,19 +173,50 @@ export function useDesignWorker() {
         break
       case 'shapes':
         // ocp-tessellate already emits the nested-array Shapes tree that
-        // three-cad-viewer.render() consumes directly — just parse it.
+        // three-cad-viewer.render() consumes directly — just parse it. Frames
+        // arrive in build order (the worker runs one build at a time and skips
+        // tessellating a superseded one), so an out-of-order id would mean a bug
+        // rather than a race — drop it rather than render backwards.
+        if (msg.id < shownBuildId)
+          break
         try {
           shapes.value = JSON.parse(msg.data) as Shapes
+          shownBuildId = msg.id
         }
         catch (err) {
           console.error('Failed to parse shapes', err)
         }
         break
+      case 'build-stage':
+        if (msg.id === latestBuildId)
+          buildStage.value = msg.stage
+        break
       case 'build-result':
         if (msg.id === latestBuildId) {
           fieldErrors.value = msg.ok ? [] : (msg.errors ?? [])
           report.value = msg.report ?? null
-          building.value = false
+          buildStage.value = null
+          // A change that landed while this build ran is still waiting on its
+          // debounce, so the form isn't settled yet even though a result arrived.
+          buildPending.value = buildTimer !== null
+        }
+        break
+      case 'build-timing':
+        log(
+          `build ${msg.id}: geometry ${fmtMs(msg.geometryMs)}, `
+          + `tessellate ${fmtMs(msg.tessellateMs)}, analyze ${fmtMs(msg.analyzeMs)}, `
+          + `total ${fmtMs(msg.totalMs)}`,
+        )
+        break
+      case 'build-cancelled':
+        // The worker gave up on a build partway through. Normally we superseded
+        // it ourselves, and `buildPending` stays set through the successor — from
+        // the user's side nothing has finished. If it was still our latest, a
+        // design swap preempted it instead and no successor is coming.
+        log(`build ${msg.id} cancelled (superseded)`)
+        if (msg.id === latestBuildId) {
+          buildStage.value = null
+          buildPending.value = buildTimer !== null
         }
         break
       case 'export-result': {
@@ -218,18 +266,39 @@ export function useDesignWorker() {
     }
   }
 
-  /** Debounced, latest-wins build request. */
+  /**
+   * Request a build of `params`. Latest-wins the whole way down: this debounces
+   * bursts, the worker keeps only our newest request, and a build the newest one
+   * overtook is abandoned mid-flight — so the amount of work in progress is
+   * capped at what the machine can actually keep up with, whatever the user does
+   * to the form.
+   *
+   * The debounce is asymmetric on purpose. A change that follows a lull is a
+   * deliberate act and goes out immediately; a change on the heels of another is
+   * part of a burst, and only where the burst settles is worth building.
+   */
+  let lastChangeAt = 0
   function build(params: Record<string, unknown>) {
     if (status.value !== 'ready')
       return
+    // Snapshot to a plain object: a Vue reactive proxy isn't structured-cloneable.
+    const snapshot = { ...params }
+    const now = performance.now()
+    const idle = now - lastChangeAt > BUILD_IDLE_GAP_MS
+    lastChangeAt = now
+    buildPending.value = true
+
+    const dispatch = () => {
+      buildTimer = null
+      latestBuildId = nextId++
+      send({ type: 'build', id: latestBuildId, params: snapshot })
+    }
+
     if (buildTimer)
       clearTimeout(buildTimer)
-    buildTimer = setTimeout(() => {
-      latestBuildId = nextId++
-      building.value = true
-      // Snapshot to a plain object: a Vue reactive proxy isn't structured-cloneable.
-      send({ type: 'build', id: latestBuildId, params: { ...params } })
-    }, BUILD_DEBOUNCE_MS)
+    if (idle)
+      dispatch()
+    else buildTimer = setTimeout(dispatch, BUILD_TRAILING_MS)
   }
 
   /**
@@ -288,7 +357,8 @@ export function useDesignWorker() {
     presets,
     presetLabel,
     shapes,
-    building,
+    buildStage,
+    buildPending,
     fieldErrors,
     report,
     reloadError,

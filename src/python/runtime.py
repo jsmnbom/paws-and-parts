@@ -162,11 +162,33 @@ def show(obj, progress=None) -> None:
   builtins.send_data_to_js(numpy_to_json(shapes), "DATA")  # type: ignore[attr-defined]
 
 
-def build_and_show(params_json: str) -> str:
-  """Validate + build + tessellate. On success the shapes are posted via the
-  bridge (as a side effect of show), the printability report is computed, and
-  ``{"ok": true, "report": {...}}`` is returned. On failure a structured error
-  list is returned for inline display on the form."""
+# --------------------------------------------------------------------------- #
+# The build, in phases
+# --------------------------------------------------------------------------- #
+#
+# A build is three separate calls rather than one — geometry, tessellation,
+# analysis — because the worker's event loop is blocked for the whole of each
+# call. Splitting them gives the worker a moment *between* phases to notice that
+# newer parameters have arrived and abandon the rest of the work (there is no way
+# to interrupt a phase from the outside: OCP's C++ calls have no interrupt
+# points, and CPython's would need a SharedArrayBuffer we can't have). The phases
+# also give the UI something honest to draw a progress bar from.
+#
+# The worker drives them in order and is responsible for calling ``build_abandon``
+# on any path that doesn't reach ``build_analyze``.
+
+# The object built by ``build_geometry``, waiting to be tessellated/analyzed. It
+# pins OCC memory between calls, so every exit path clears it.
+_staged: Design | None = None
+
+
+def build_geometry(params_json: str) -> str:
+  """Phase 1 — validate the parameters and build the geometry, staging the result
+  for the phases that follow. Returns ``{"ok": true}``, or ``{"ok": false,
+  "errors": [...]}`` for inline display on the form."""
+  global _staged
+  _staged = None
+
   if ActiveDesign is None:
     return json.dumps({"ok": False, "errors": [{"loc": [], "msg": "No design loaded", "type": "no_design"}]})
 
@@ -177,20 +199,43 @@ def build_and_show(params_json: str) -> str:
     return json.dumps({"ok": False, "errors": _validation_errors(exc)})
 
   try:
-    obj = ActiveDesign(params)  # type: ignore[reportGeneralTypeIssues]
+    _staged = ActiveDesign(params)  # type: ignore[reportGeneralTypeIssues]
   except Exception as exc:  # geometry error -> surface as a form-level message
     return json.dumps(
       {"ok": False, "errors": [{"loc": [], "msg": str(exc), "type": "build_error"}]}
     )
+  return json.dumps({"ok": True})
 
-  show(obj, progress=None)
 
-  # Printability report — never let an analysis failure break a successful build.
+def build_tessellate() -> str:
+  """Phase 2 — tessellate the staged geometry and post it to the viewer (a side
+  effect of ``show``, over the host bridge)."""
+  if _staged is None:
+    return json.dumps({"ok": False, "errors": [{"loc": [], "msg": "Nothing staged", "type": "build_error"}]})
+  show(_staged, progress=None)
+  return json.dumps({"ok": True})
+
+
+def build_analyze() -> str:
+  """Phase 3 — the printability report, and the end of the build. Never lets an
+  analysis failure break a build whose geometry is already on screen."""
+  global _staged
+  if _staged is None:
+    return json.dumps({"ok": False, "errors": [{"loc": [], "msg": "Nothing staged", "type": "build_error"}]})
   try:
-    report = obj.analyze().to_dict()
+    report = _staged.analyze().to_dict()
   except Exception as exc:
     report = Report.error(f"Printability analysis failed: {exc}").to_dict()
+  _staged = None
   return json.dumps({"ok": True, "report": report})
+
+
+def build_abandon() -> str:
+  """Drop the staged geometry without finishing the build — the parameters it was
+  built from are already out of date."""
+  global _staged
+  _staged = None
+  return json.dumps({"ok": True})
 
 
 def export_bytes(params_json: str, fmt: str):

@@ -30,7 +30,8 @@ const {
   presets,
   presetLabel,
   shapes,
-  building,
+  buildStage,
+  buildPending,
   fieldErrors,
   report,
   reloadError,
@@ -520,7 +521,12 @@ async function downloadExport(format: 'STEP' | '3MF') {
         class="bg-neutral-100 max-lg:h-[45svh] max-lg:min-h-0 max-lg:flex-none"
       >
         <Suspense>
-          <Viewer ref="viewerRef" :shapes="shapes" :building="building" />
+          <Viewer
+            ref="viewerRef"
+            :shapes="shapes"
+            :build-stage="buildStage"
+            :build-pending="buildPending"
+          />
           <template #fallback>
             <div class="flex h-full items-center justify-center text-sm text-neutral-400">
               Loading viewer…

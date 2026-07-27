@@ -41,6 +41,13 @@ export interface BuildResult {
   report?: PrintabilityReport
 }
 
+/**
+ * The coarse phases of a build, in order — geometry, tessellation, analysis.
+ *  Each is one Python call, and the boundaries between them are the only moments
+ *  the worker's event loop runs during a build (see `build-stage` below).
+ */
+export type BuildStage = 'building' | 'tessellating' | 'analyzing'
+
 // --- Main thread -> worker ------------------------------------------------- //
 export type WorkerRequest
   = | { type: 'build', id: number, params: Record<string, unknown> }
@@ -64,8 +71,25 @@ export type WorkerResponse
   // schema. So the gallery can warm the engine before any design is chosen.
     | { type: 'ready' }
     | { type: 'log', stream: 'stdout' | 'stderr', text: string }
-    | { type: 'shapes', data: string }
+  // Tessellated geometry for build `id`. Emitted from inside the tessellate
+  // phase via the host bridge, so it arrives before that build's `build-result`.
+    | { type: 'shapes', id: number, data: string }
+  // A build entered a new phase. Posted *between* the Python calls a build is
+  // made of — while one is running the worker is blocked, so these boundaries
+  // are the only progress signal there is (and the only place a build can be
+  // given up on; see `build-cancelled`).
+    | { type: 'build-stage', id: number, stage: BuildStage }
     | ({ type: 'build-result', id: number } & BuildResult)
+  // Build `id` was abandoned at a phase boundary because newer params (or a
+  // design swap) had already arrived. No `build-result` follows for that id —
+  // the work it would have reported is being redone with the newer params.
+    | { type: 'build-cancelled', id: number }
+  // How long each phase of build `id` took, in ms (undefined for a phase that
+  // never ran — e.g. abandoned before tessellate/analyze). Sent alongside the
+  // terminal message (`build-result` or `build-cancelled`) so the page-thread
+  // console can log it — the worker's own console is a separate inspector
+  // context a user screenshot won't show.
+    | { type: 'build-timing', id: number, geometryMs?: number, tessellateMs?: number, analyzeMs?: number, totalMs: number }
     | { type: 'export-result', id: number, format: string, bytes?: Uint8Array, error?: string }
   // Reply to `reload-design` (and dev HMR of a design.py — then `id` is absent).
   // On success carries the fresh schema/presets; on failure `ok:false` + the

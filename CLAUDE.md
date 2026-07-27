@@ -148,11 +148,19 @@ touching cross-boundary code.
   design's source) to bind one. A `host_bridge` JsModule lets
   Python post the tessellated Shapes tree straight to the main thread. Scheduler
   runs one Python call at a time: design reloads and builds **coalesce to
-  latest-wins**, exports are FIFO.
+  latest-wins**, exports are FIFO. A build runs as **three Python calls**
+  (`runBuild`: geometry → tessellate → analyze) with a macrotask yield between
+  them, so a build the user has already superseded is **abandoned at the next
+  phase boundary** (`build_abandon`, a `build-cancelled` reply, no frame). Those
+  boundaries are the only place cancellation is possible at all: while Python
+  runs, the worker's event loop is blocked, and OCP's C++ calls have no interrupt
+  points (CPython's own would need a `SharedArrayBuffer`, i.e. cross-origin
+  isolation, which GitHub Pages can't give us).
 - `src/python/runtime.py` — holds the active seam as `ActiveDesign` (bound by
-  `reload_design`), and exposes worker-facing helpers: `get_schema_json`,
-  `build_and_show` (validate → `ActiveDesign(params)` build → tessellate →
-  `obj.analyze()`), `export_bytes` (STEP via build123d; 3MF OrcaSlicer project via
+  `reload_design`), and exposes worker-facing helpers: `get_schema_json`, the
+  build phases `build_geometry` (validate → `ActiveDesign(params)`, staged in
+  `_staged`) / `build_tessellate` / `build_analyze` / `build_abandon`,
+  `export_bytes` (STEP via build123d; 3MF OrcaSlicer project via
   orca123d), and `reload_design` (gallery select / dev hot-reload; returns
   `{ok, schema?, presets?, error?}`, surfacing a bad edit's traceback instead of
   throwing). It loads the source as a **real `design` module** (registered in
@@ -161,9 +169,15 @@ touching cross-boundary code.
   field's attribute docstring back out of the source. A failed load restores the
   previous module and leaves `ActiveDesign` bound.
 - `src/composables/useDesignWorker.ts` — worker lifecycle + reactive state (schema,
-  shapes, building, fieldErrors, report, `reloadError`, `reloading`), debounced
-  `build` and `reloadDesign`, export.
-- `src/components/` — `BootProgress`, `ParamForm`, `Viewer` (three-cad-viewer
+  shapes, `buildStage`/`buildPending`, fieldErrors, report, `reloadError`,
+  `reloading`), debounced `build` and `reloadDesign`, export. `build`'s debounce is
+  asymmetric: a change following a lull (> `BUILD_IDLE_GAP_MS`) is a deliberate act
+  and dispatches immediately, one on the heels of another is part of a burst and
+  only its settling value is built (`BUILD_TRAILING_MS`). `buildStage` is what the
+  worker is doing right now; `BuildProgress.vue` draws it as a hairline bar over
+  the viewer (hidden for the first 200 ms, so quick rebuilds pass unremarked).
+- `src/components/` — `BootProgress`, `BuildProgress` (the per-build bar, distinct
+  from the boot bar), `ParamForm`, `Viewer` (three-cad-viewer
   wrapper), `PrintabilityPanel`, `ShapeSelect`, `ShapePreview`, `AppContent` (the
   form + viewer body), `CodeEditor` (lazy Monaco; loads only when the source view is
   first opened, so Monaco never touches the main bundle). The source view is
@@ -177,7 +191,7 @@ touching cross-boundary code.
 Full regeneration on every parameter change (no incremental updates) — each
 change re-runs `ActiveDesign(params)` and re-tessellates the whole design. First
 load compiles OCP.wasm (tens of seconds); the boot progress bar covers it and is a
-separate UI state from the sub-second per-build spinner.
+separate UI state from the sub-second per-build bar (`BuildProgress.vue`).
 
 In dev, editing a `src/designs/<slug>/design.py` triggers a Vite page reload;
 because the **SharedWorker survives page reloads**, the page reconnects to the

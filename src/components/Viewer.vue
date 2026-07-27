@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import type { ChangeNotification, Shapes } from 'three-cad-viewer'
+import type { BuildStage } from '../lib/protocol'
 import { Display, Viewer as TCVViewer } from 'three-cad-viewer'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import BuildProgress from './BuildProgress.vue'
 // The published bundle carries no CSS import of its own — the stylesheet ships
 // as a separate export — so pull it in here to style the viewer chrome.
 import 'three-cad-viewer/css'
 
 const props = defineProps<{
   shapes: Shapes | null
-  building: boolean
+  /** The rebuild in flight, if any — drawn as a progress bar over the canvas. */
+  buildStage: BuildStage | null
+  buildPending: boolean
 }>()
 
 const host = ref<HTMLDivElement | null>(null)
@@ -285,29 +289,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="relative h-full w-full min-h-0 min-w-0 overflow-hidden">
     <div ref="host" class="h-full w-full" />
-    <Transition name="fade">
-      <div
-        v-if="building"
-        class="pointer-events-none absolute right-3 top-3 flex items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-sm text-neutral-600 shadow-sm ring-1 ring-neutral-200 backdrop-blur"
-      >
-        <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-600" />
-        Rebuilding…
-      </div>
-    </Transition>
+    <BuildProgress :stage="buildStage" :pending="buildPending" />
   </div>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-</style>
 
 <style>
 /* Reskin three-cad-viewer's light theme to design 1b "Studio Pink":

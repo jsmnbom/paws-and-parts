@@ -13,6 +13,7 @@
 
 import type {
   BuildResult,
+  BuildStage,
   JsonSchema,
   Preset,
   WorkerRequest,
@@ -30,9 +31,11 @@ let busy = false
 // Per-tab build coalescing: each port keeps only its latest pending build.
 const pendingBuilds = new Map<MessagePort, { id: number, params: unknown }>()
 const exportQueue: { port: MessagePort, id: number, format: string, params: unknown }[] = []
-// The port whose build is running right now, so host_bridge's shapes message
-// (emitted during the build) reaches the correct tab. Set around doBuild only.
+// The port and id of the build running right now, so host_bridge's shapes
+// message (emitted from inside the tessellate phase) reaches the correct tab and
+// is attributable to the build that produced it. Set around runBuild only.
 let currentBuildPort: MessagePort | null = null
+let currentBuildId = 0
 // Pending design swap, processed with top priority so the new design is live
 // before the next build runs. Carries the requesting port + id when it came from
 // a `reload-design` request (reply routes back there); `port: null` marks a dev
@@ -97,7 +100,7 @@ async function initialize(): Promise<void> {
   pyodide.registerJsModule('host_bridge', {
     send_data_to_js(data: string, msgType: string): void {
       if (msgType === 'DATA' && currentBuildPort)
-        post(currentBuildPort, { type: 'shapes', data })
+        post(currentBuildPort, { type: 'shapes', id: currentBuildId, data })
     },
   })
   await pyodide.runPythonAsync(
@@ -129,10 +132,87 @@ async function initialize(): Promise<void> {
   broadcast(readyMsg)
 }
 
-async function doBuild(params: unknown): Promise<BuildResult> {
+// --- A build, in cancellable phases --------------------------------------- //
+//
+// runtime.py splits a build into three calls (geometry -> tessellate ->
+// analyze). Python holds this worker's event loop for the whole of each one, so
+// the gaps between them are the only moments a queued port message can be
+// delivered — and therefore the only place a build can be given up on. Neither
+// phase can be interrupted from the outside: OCP's C++ calls have no interrupt
+// points, and CPython's own would need a SharedArrayBuffer (cross-origin
+// isolation) we don't have.
+
+/** Hand the event loop a macrotask, so port messages queued behind us land. */
+function yieldToMessages(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0))
+}
+
+/**
+ * Whether the build in flight is already out of date — this tab has queued newer
+ * params, or a design swap is waiting (which would invalidate any build). Only
+ * meaningful right after `yieldToMessages`, since nothing can arrive otherwise.
+ */
+function superseded(port: MessagePort): boolean {
+  return pendingBuilds.has(port) || pendingReload !== null
+}
+
+/**
+ * Run one build through its phases, posting a `build-stage` at each boundary and
+ * bailing out (`build-cancelled`) as soon as the result stops being wanted. A
+ * cancelled build produces no shapes at all: the newer params are one geometry
+ * pass away, so the viewer holding its last good frame beats showing one the user
+ * has already scrolled past.
+ */
+async function runBuild(port: MessagePort, id: number, params: unknown): Promise<void> {
+  const stage = (s: BuildStage) => post(port, { type: 'build-stage', id, stage: s })
+  const py = (expr: string) => pyodide.runPythonAsync(expr) as Promise<string>
+
+  // Per-phase timing, sent to the main thread (not logged here) — the worker's
+  // own console is a separate inspector context a page-thread screenshot won't
+  // show, but useDesignWorker's `log` does.
+  const start = performance.now()
+  const times: { geometryMs?: number, tessellateMs?: number, analyzeMs?: number } = {}
+  const timed = async <T>(phase: keyof typeof times, fn: () => Promise<T>): Promise<T> => {
+    const t0 = performance.now()
+    try {
+      return await fn()
+    }
+    finally {
+      times[phase] = performance.now() - t0
+    }
+  }
+  const postTimes = () => post(port, { type: 'build-timing', id, ...times, totalMs: performance.now() - start })
+
+  const abandon = async () => {
+    await py('build_abandon()')
+    postTimes()
+    post(port, { type: 'build-cancelled', id })
+  }
+
+  stage('building')
   pyodide.globals.set('_params_json', JSON.stringify(params))
-  const resultStr: string = await pyodide.runPythonAsync('build_and_show(_params_json)')
-  return JSON.parse(resultStr) as BuildResult
+  const built = JSON.parse(await timed('geometryMs', () => py('build_geometry(_params_json)'))) as BuildResult
+  if (!built.ok) {
+    postTimes()
+    post(port, { type: 'build-result', id, ...built })
+    return
+  }
+
+  await yieldToMessages()
+  if (superseded(port))
+    return abandon()
+
+  stage('tessellating')
+  await timed('tessellateMs', () => py('build_tessellate()')) // posts the shapes tree over the host bridge
+
+  await yieldToMessages()
+  if (superseded(port))
+    return abandon()
+
+  stage('analyzing')
+  const result = JSON.parse(await timed('analyzeMs', () => py('build_analyze()'))) as BuildResult
+  postTimes()
+  post(port, { type: 'build-result', id, ...result })
 }
 
 // Re-exec a design source into the running interpreter and hand back the fresh
@@ -167,10 +247,12 @@ async function doExport(params: unknown, format: string): Promise<Uint8Array> {
   return res as Uint8Array
 }
 
-// --- Scheduler: one Python call at a time. Builds coalesce to latest-wins;
-//     exports are queued FIFO so every click gets a response. Work is tagged
-//     with its originating port so responses route back to the right tab; two
-//     active tabs simply serialize through the one interpreter. ------------- //
+// --- Scheduler: one Python call at a time. Builds coalesce to latest-wins, and
+//     a build that a newer one has overtaken is abandoned at its next phase
+//     boundary (see runBuild); exports are queued FIFO so every click gets a
+//     response. Work is tagged with its originating port so responses route back
+//     to the right tab; two active tabs simply serialize through the one
+//     interpreter. ------------------------------------------------------- //
 
 function schedule() {
   if (busy || !pyodide)
@@ -210,16 +292,19 @@ function schedule() {
     pendingBuilds.delete(port)
     busy = true
     currentBuildPort = port
-    doBuild(req.params)
-      .then(result => post(port, { type: 'build-result', id: req.id, ...result }))
-      .catch(err =>
+    currentBuildId = req.id
+    runBuild(port, req.id, req.params)
+      .catch(async (err) => {
+        // A phase threw. Drop whatever it staged so the next build starts clean,
+        // then report — the form has nowhere else to learn the build died.
+        await pyodide.runPythonAsync('build_abandon()').catch(() => {})
         post(port, {
           type: 'build-result',
           id: req.id,
           ok: false,
           errors: [{ loc: [], msg: String(err?.message ?? err), type: 'worker_error' }],
-        }),
-      )
+        })
+      })
       .finally(() => {
         currentBuildPort = null
         busy = false

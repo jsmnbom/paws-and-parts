@@ -585,10 +585,10 @@ class Chain(Design[Parameters]):
   # touches the bed only along the bottom of its straight run; how much area that
   # is (a facet strip vs. a knife edge) decides whether the first layer sticks.
   # Every link has the same footprint and tilt (both layouts), so bed contact and
-  # lean are one-link measurements. In line mode adjacent pairs are congruent; in
-  # spiral mode the innermost pair (base_links[0]/[1]) has the sharpest heading
-  # change and so bounds the interlock — checking it is conservative. Either way
-  # the analysis is O(1) regardless of link count.
+  # lean are one-link measurements. In line mode adjacent (and skip-one) pairs are
+  # congruent; in spiral mode the innermost pairs (base_links[0]/[1]/[2]) have the
+  # sharpest heading change and so bound the interlock — checking them is
+  # conservative. Either way the analysis is O(1) regardless of link count.
 
   def analyze(self) -> Report:
     """Assess the built chain's printability (bed contact + link interlock + lean).
@@ -599,24 +599,29 @@ class Chain(Design[Parameters]):
     report = Report()
 
     # 0. Degenerate geometry — if the build collapsed to slivers / invalid solids the
-    # measurements below are meaningless (and may raise), so bail early.
-    if not report.check_geometry(self):
+    # measurements below are meaningless (and may raise), so bail early. Every link
+    # is a rigid-transform copy of the same construction, so one stands for all —
+    # the full BRep validity check is too costly to repeat per link.
+    if not report.check_geometry(self, sample=self.links[:1]):
       return report
 
-    # 1. Bed-contact footprint (one link stands for all, by periodicity).
-    bare_area = self.base_links[0].faces().sort_by(Axis.Z)[0].area
+    # 1. Bed-contact footprint (one link stands for all, by periodicity). With mouse
+    # ears on, only the effective (exported) footprint is worth reporting — the bare
+    # link's is never what actually hits the bed.
     if self.params.brim == "ears":
-      report.check_bed_contact(bare_area, label="Bare link")
       eff_area = self.links[0].faces().sort_by(Axis.Z)[0].area
       report.check_bed_contact(eff_area, label="Bed contact with mouse ears")
     else:
+      bare_area = self.base_links[0].faces().sort_by(Axis.Z)[0].area
       report.check_bed_contact(
         bare_area,
         label="Bed contact per link",
         suggestion="Try the mouse-ears brim.",
       )
 
-    # 2. Interlock: overlap (error) / clearance (warning) for one adjacent pair.
+    # 2. Interlock: overlap (error) / clearance (warning) for one adjacent pair, plus
+    # one skip-one pair — a link can also collide with its next-nearest neighbour by
+    # squeezing past the one in between, which an adjacent-only check would miss.
     if len(self.base_links) >= 2:
       report.check_overlap(
         self.base_links[0],
@@ -627,6 +632,13 @@ class Chain(Design[Parameters]):
     else:
       report.add(
         "Single link", 1, detail="Only one link — no interlock to check.", status="ok"
+      )
+    if len(self.base_links) >= 3:
+      report.check_overlap(
+        self.base_links[0],
+        self.base_links[2],
+        overlap_label="Links overlap (skip-one)",
+        clearance_label="Clearance between skip-one links",
       )
 
     # 3. Floating sections — every link is bedded by construction, so this is a cheap

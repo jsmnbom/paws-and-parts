@@ -49,6 +49,7 @@ from typing import (
   Iterator,
   Literal,
   Mapping,
+  Sequence,
   TypeVar,
   cast,
   get_args,
@@ -56,7 +57,7 @@ from typing import (
 )
 
 import pydantic
-from build123d import Compound, ExportSVG, Wire
+from build123d import Compound, ExportSVG, Shape, Wire
 from ocp_tessellate.ocp_utils import dist_shapes
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
@@ -537,12 +538,21 @@ class Report:
     *,
     label: str = "Geometry",
     min_volume: float = _MIN_SOLID_VOLUME,
+    sample: Sequence[Shape] | None = None,
   ) -> bool:
     """Guard against degenerate build output before other checks run: an empty
     build (no solids), zero/near-zero-volume slivers, or an invalid/non-manifold
-    BREP. Value = count of degenerate solids (0 -> ok). Returns ``True`` when the
-    geometry is sound, so a caller can skip measurements that would be
-    meaningless on broken geometry."""
+    BREP. Value = count of degenerate solids among those checked (0 -> ok).
+    Returns ``True`` when the geometry is sound, so a caller can skip
+    measurements that would be meaningless on broken geometry.
+
+    ``is_valid`` is a full BRep check (~10ms/solid) and can dominate analyze
+    time when ``shape`` has many solids. When ``sample`` is given, only its
+    solids go through the expensive validity/volume check — safe when the rest
+    are rigid-transform copies of what's sampled, since translation/rotation
+    preserve both validity and volume; a design with repeated geometry (e.g. an
+    array of identical parts) can judge that from its own construction. The
+    reported solid count always reflects the full ``shape``."""
     solids = shape.solids()
     if not solids:
       self.add(
@@ -552,8 +562,9 @@ class Report:
         status="error",
       )
       return False
+    checked = solids if sample is None else [s for shp in sample for s in shp.solids()]
     degenerate = 0
-    for s in solids:
+    for s in checked:
       try:
         ok = s.is_valid and s.volume >= min_volume
       except Exception:
