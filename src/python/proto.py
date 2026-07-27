@@ -465,8 +465,8 @@ _DEFAULT_SUMMARY: dict[str, str] = {
 # band -> (min_area_mm2, item_status); below the smallest min -> _IMPOSSIBLE.
 DEFAULT_CONTACT_BANDS: dict[str, tuple[float, Status]] = {
   "easy": (60.0, "ok"),
-  "medium": (30.0, "ok"),
-  "hard": (20.0, "warning"),
+  "medium": (20.0, "ok"),
+  "hard": (15.0, "warning"),
   "expert": (10.0, "warning"),
 }
 _IMPOSSIBLE: tuple[str, Status] = ("impossible", "error")  # below smallest band
