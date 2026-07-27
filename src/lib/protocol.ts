@@ -51,7 +51,11 @@ export type BuildStage = 'building' | 'tessellating' | 'analyzing'
 // --- Main thread -> worker ------------------------------------------------- //
 export type WorkerRequest
   = | { type: 'build', id: number, params: Record<string, unknown> }
-    | { type: 'export', id: number, format: string, params: Record<string, unknown> }
+  // `name` is the params-encoding basename the frontend already computed for the
+  // download filename (`exportFilename` in `paramsUrl.ts`); the worker reuses it
+  // as the 3MF project's object name too, rather than recomputing which params
+  // differ from default in Python as well.
+    | { type: 'export', id: number, format: string, params: Record<string, unknown>, name: string }
   // Swap the active design: exec `source` (a design.py) in place and hand back
   // its fresh schema/presets. Drives both gallery design-selection (a bundled
   // design's source) and the Code tab (the editor's contents). Latest-wins, like

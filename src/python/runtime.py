@@ -238,21 +238,25 @@ def build_abandon() -> str:
   return json.dumps({"ok": True})
 
 
-def export_bytes(params_json: str, fmt: str):
+def export_bytes(params_json: str, fmt: str, name: str):
   """Rebuild from ``params_json`` and return the exported file as ``bytes``.
   Rebuilding (rather than reusing the last shown object) keeps exports in sync
-  with the current form even if the last render was for different params."""
+  with the current form even if the last render was for different params.
+  ``name`` (the params-encoding basename the frontend already computed for the
+  download filename, see ``exportFilename`` in ``paramsUrl.ts``) is reused as the
+  3MF project's object name too, so the two stay in sync without recomputing the
+  same "which params differ from default" logic in Python."""
   if ActiveDesign is None:
     raise RuntimeError("No design loaded")
 
   data = json.loads(params_json)
   params = ActiveDesign.Parameters(**data)
-  obj = ActiveDesign(params) # type: ignore[reportGeneralTypeIssues]
+  shape = ActiveDesign(params) # type: ignore[reportGeneralTypeIssues]
 
   fmt = fmt.upper()
   if fmt == "STEP":
     bio = io.BytesIO()
-    b3d.export_step(obj, bio)
+    b3d.export_step(shape, bio)
     return bio.getvalue()
   if fmt == "3MF":
     # OrcaSlicer project via orca123d. save() writes to a path (it tessellates
@@ -261,7 +265,12 @@ def export_bytes(params_json: str, fmt: str):
     from orca123d import Project
 
     proj = Project()
-    proj.add_object(obj)  # names itself from the compound's label (design-defined)
+    if len(shape.children) > 0:
+      obj = proj.add_object(None, name=name)
+      for child in shape.children:
+        obj.add_part(child)
+    else:
+      proj.add_object(shape, name=name)
     path = "/tmp/export.3mf"
     proj.save(path)
     with open(path, "rb") as f:

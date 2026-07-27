@@ -265,12 +265,12 @@ async function downloadExport(format: 'STEP' | '3MF') {
   exportFormat.value = format
   exporting.value = format
   try {
-    const bytes = await exportModel(format, params.value)
+    const base = schema.value ? exportFilename(params.value, schema.value, props.slug) : props.slug
+    const bytes = await exportModel(format, params.value, base)
     const blob = new Blob([bytes as BlobPart], { type: 'application/octet-stream' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    const base = schema.value ? exportFilename(params.value, schema.value, props.slug) : props.slug
     a.download = `${base}.${format.toLowerCase()}`
     document.body.appendChild(a)
     a.click()

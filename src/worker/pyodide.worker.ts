@@ -30,7 +30,7 @@ let pyodide: any = null
 let busy = false
 // Per-tab build coalescing: each port keeps only its latest pending build.
 const pendingBuilds = new Map<MessagePort, { id: number, params: unknown }>()
-const exportQueue: { port: MessagePort, id: number, format: string, params: unknown }[] = []
+const exportQueue: { port: MessagePort, id: number, format: string, params: unknown, name: string }[] = []
 // The port and id of the build running right now, so host_bridge's shapes
 // message (emitted from inside the tessellate phase) reaches the correct tab and
 // is attributable to the build that produced it. Set around runBuild only.
@@ -234,10 +234,11 @@ async function doReloadDesign(
   return JSON.parse(resultStr)
 }
 
-async function doExport(params: unknown, format: string): Promise<Uint8Array> {
+async function doExport(params: unknown, format: string, name: string): Promise<Uint8Array> {
   pyodide.globals.set('_params_json', JSON.stringify(params))
   pyodide.globals.set('_fmt', format)
-  const res = await pyodide.runPythonAsync('export_bytes(_params_json, _fmt)')
+  pyodide.globals.set('_name', name)
+  const res = await pyodide.runPythonAsync('export_bytes(_params_json, _fmt, _name)')
   // Python `bytes` may arrive as a PyProxy or an already-converted Uint8Array.
   if (res && typeof res.toJs === 'function') {
     const bytes: Uint8Array = res.toJs()
@@ -315,7 +316,7 @@ function schedule() {
   const exp = exportQueue.shift()
   if (exp) {
     busy = true
-    doExport(exp.params, exp.format)
+    doExport(exp.params, exp.format, exp.name)
       .then(bytes =>
         post(exp.port, { type: 'export-result', id: exp.id, format: exp.format, bytes }, [bytes.buffer]),
       )
@@ -368,7 +369,7 @@ function connect(port: MessagePort) {
         schedule()
         break
       case 'export':
-        exportQueue.push({ port, id: msg.id, format: msg.format, params: msg.params })
+        exportQueue.push({ port, id: msg.id, format: msg.format, params: msg.params, name: msg.name })
         schedule()
         break
       case 'reload-design':

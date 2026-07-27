@@ -318,11 +318,11 @@ export function useDesignWorker() {
     }, RELOAD_DEBOUNCE_MS)
   }
 
-  function exportModel(format: string, params: Record<string, unknown>): Promise<Uint8Array> {
+  function exportModel(format: string, params: Record<string, unknown>, name: string): Promise<Uint8Array> {
     return new Promise((resolve, reject) => {
       const id = nextId++
       pendingExports.set(id, { resolve, reject, format })
-      send({ type: 'export', id, format, params: { ...params } })
+      send({ type: 'export', id, format, params: { ...params }, name })
     })
   }
 
