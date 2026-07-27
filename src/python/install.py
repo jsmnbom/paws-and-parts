@@ -26,7 +26,7 @@ REQUIREMENTS = [
   "pydantic==2.12.5",
   "build123d==0.11.1",
   "ocp-tessellate==3.1.2",
-  "orca123d==0.1.1",
+  "orca123d==0.1.2",
   "fonttools==4.63.0",
 ]
 
@@ -137,7 +137,6 @@ micropip.add_mock_package("lib3mf", "2.4.1", modules={"lib3mf": _MAGIC})
 # deps=False and never hits the PyPI metadata API at boot.
 _WHEEL_URLS = [
   # === BEGIN GENERATED WHEEL URLS ===
-  "https://files.pythonhosted.org/packages/10/7f/a6177407e7ab76ff0732fff3f553562c8cabc84291287a2f475b7391be54/orca123d-0.1.1-py3-none-any.whl",
   "https://files.pythonhosted.org/packages/2c/47/c99d5268f354002ce80f8d029cd9d7d872969da1de8b93d32de4dc56d6f4/fonttools-4.63.0-py3-none-any.whl",
   "https://files.pythonhosted.org/packages/30/c0/04e9363a99fee892de2776820e3dcf04f8825b6edc9580efe3416c9465a7/cadquery_ocp_proxy-7.9.3.1.1-py3-none-any.whl",
   "https://files.pythonhosted.org/packages/3a/85/1c032f893164178cc2e156114a670b3b9926d023e33457baeebb7ceee148/cadquery_ocp_novtk_ocp_wasm-7.9.3.1.post202607021200-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
@@ -149,6 +148,7 @@ _WHEEL_URLS = [
   "https://files.pythonhosted.org/packages/91/25/413bf35cd207142ca4a6e4d24d8006ee25e8fe225fbc5221bb91f8bc41f2/ocp_gordon-0.2.0-py3-none-any.whl",
   "https://files.pythonhosted.org/packages/98/4b/9128c82796479426fba219a5b0da70bbf8f1f0b571a54cc7a420cea0e9c4/svgpathtools-1.7.2-py2.py3-none-any.whl",
   "https://files.pythonhosted.org/packages/a9/d7/27d2c9d5a2645fdda9e502a2a1a1cb5d4c9d137223ef76a43296eb7c152b/ocpsvg-0.6.0-py3-none-any.whl",
+  "https://files.pythonhosted.org/packages/d1/8a/6bc5abdae29b244ef55d7629c61105a4d30cc180216f1a00b08692c48796/orca123d-0.1.2-py3-none-any.whl",
   "https://files.pythonhosted.org/packages/e7/f2/c466dbd4cb3aa75a192ba39f1a49058f828fcc0eb6f9cf6936ed6078308b/build123d-0.11.1-py3-none-any.whl",
   "https://files.pythonhosted.org/packages/f0/33/12020ba99beaff91682b28dc0bbf0345bbc3244a4afbae7644e4fa348f23/webcolors-24.8.0-py3-none-any.whl",
   "https://files.pythonhosted.org/packages/ff/8e/43d45cf3e18e3f455e4b5ab333a7c27b8e38c4e535f7346b7148ce08eb65/trianglesolver-1.2-py3-none-any.whl",

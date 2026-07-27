@@ -11,7 +11,7 @@ dependencies = [
   "bd-warehouse>=0.3.0",
   "build123d==0.11.1",
   "ocp-tessellate==3.4.1",
-  "orca123d==0.1.1",
+  "orca123d==0.1.2",
   "pydantic>=2.13.4",
 ]
 

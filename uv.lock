@@ -692,16 +692,16 @@ wheels = [
 
 [[package]]
 name = "orca123d"
-version = "0.1.1"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "build123d" },
     { name = "numpy" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/cc/551cb91af9bb037431600a18508cee8cefb5771ce1e17fc1107e7a8ab9fa/orca123d-0.1.1.tar.gz", hash = "sha256:f8f39cbd424d76524d22684cff3e93a265e787cdfd34f8584679ec241783f447", size = 92885, upload-time = "2026-07-06T20:59:45.041Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/ce/564eb54c48ad5ccf1b36d5d46e27b505bcbef8276502f2405ae5fa44ffa3/orca123d-0.1.2.tar.gz", hash = "sha256:28a0c4d742cefe8ba9254b55e5791ceb30b7680740d9179571502b36416ec919", size = 93011, upload-time = "2026-07-27T13:22:10.364Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/7f/a6177407e7ab76ff0732fff3f553562c8cabc84291287a2f475b7391be54/orca123d-0.1.1-py3-none-any.whl", hash = "sha256:a64b9cbcdfea63a1f8b88074b91a418c4ef438eab892bbfd3ad3255efc6c36c8", size = 99365, upload-time = "2026-07-06T20:59:43.731Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/8a/6bc5abdae29b244ef55d7629c61105a4d30cc180216f1a00b08692c48796/orca123d-0.1.2-py3-none-any.whl", hash = "sha256:c7b681c6721e2f5a3ebc6c23de49fc5ebfefb27702a561a389758d51a6534a3d", size = 99536, upload-time = "2026-07-27T13:22:09.105Z" },
 ]
 
 [[package]]
@@ -774,7 +774,7 @@ requires-dist = [
     { name = "ipykernel", marker = "extra == 'dev'" },
     { name = "ocp-tessellate", specifier = "==3.4.1" },
     { name = "ocp-vscode", marker = "extra == 'dev'", specifier = "==4.0.0" },
-    { name = "orca123d", specifier = "==0.1.1" },
+    { name = "orca123d", specifier = "==0.1.2" },
     { name = "pip", marker = "extra == 'dev'" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.16" },
