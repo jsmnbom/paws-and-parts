@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '@nuxt/ui/composables'
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { branding } from '../branding'
 import { injectDesignWorker } from '../composables/useDesignWorker'
 import { designs } from '../designs/manifest'
@@ -53,6 +53,10 @@ watch(status, (s) => {
     showWarmup()
   else dismissWarmup()
 })
+// The toaster lives at the app root, but the watcher above dies with this view —
+// so a toast raised here would outlive the gallery (and the generator shows its
+// own boot progress anyway). Take it down on the way out.
+onUnmounted(dismissWarmup)
 </script>
 
 <template>
