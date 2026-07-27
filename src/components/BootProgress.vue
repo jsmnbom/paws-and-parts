@@ -70,8 +70,8 @@ const hasDetails = computed(() => (props.error?.trim().length ?? 0) > 0 && props
           <span class="tabular-nums">{{ Math.round(progress * 100) }}%</span>
         </div>
         <p class="mt-6 text-center text-xs text-neutral-400">
-          First load downloads and compiles the CAD kernel — this can take a
-          while. It should be faster on subsequent loads.
+          First load downloads (~41 MB) and compiles the CAD kernel — this can take a
+          while. Your browser keeps it, so later loads are much faster.
         </p>
       </div>
     </div>

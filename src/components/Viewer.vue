@@ -406,4 +406,26 @@ onBeforeUnmount(() => {
     border-radius: 0 !important;
   }
 }
+
+/* Stacked layout (below `lg`, matching AppContent): the viewer is only a ~45svh
+   slice, so tcv's own chrome is stripped back to just the canvas. All of it is
+   power-user tooling that nothing in the form depends on, and none of it survives
+   the narrow width intact — the toolbar collapses its buttons to unreadable "…"
+   stubs, and the tree is a fixed 240px, which covered close to half the viewport.
+   Orbit/pinch still work, which is what the preview is actually for.
+
+   Every element here is absolutely positioned or overlaid, so removing them frees
+   visual space without changing the canvas box; chromeHeight()/chromeWidth()
+   measure the live DOM anyway, so a resize would correct it regardless. */
+@media (max-width: 1023px) {
+  /* Per-object visibility tree. */
+  .tcv_cad_viewer .tcv_cad_tree_glass,
+  /* The button pill, and the "Tools ▼" toggle that only exists to collapse it. */
+  .tcv_cad_viewer .tcv_cad_toolbar,
+  .tcv_cad_viewer .tcv_toggle_tools_wrapper,
+  /* Selection-scope filter — orphaned once the select/measure tools are gone. */
+  .tcv_cad_viewer .tcv_filter_menu {
+    display: none !important;
+  }
+}
 </style>

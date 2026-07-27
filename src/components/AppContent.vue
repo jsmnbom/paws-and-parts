@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { DesignWorker } from '../composables/useDesignWorker'
 import type { JsonSchema, Preset } from '../lib/protocol'
-import { onKeyStroke, useClipboard, useDebounceFn, useLocalStorage } from '@vueuse/core'
+import { onKeyStroke, useDebounceFn, useLocalStorage, useMediaQuery } from '@vueuse/core'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { branding } from '../branding'
 import { getDesign } from '../designs/manifest'
 import { decodeParams, encodeParams, exportFilename } from '../lib/paramsUrl'
+import GeneratorHeader from './GeneratorHeader.vue'
 import ParamForm from './ParamForm.vue'
 import PrintabilityPanel from './PrintabilityPanel.vue'
 
@@ -44,6 +44,14 @@ const router = useRouter()
 
 const params = ref<Record<string, number | string>>({})
 const exporting = ref<string | null>(null)
+
+// Below `lg` the two panes stack (viewer over form) instead of sitting side by side,
+// which is also where Nuxt UI's own dashboard theme switches — its panels are
+// `w-full lg:w-(--width)` and its drag handle `hidden lg:block`. Matching that
+// breakpoint means we only have to correct the flex direction, not fight the library.
+// This is a viewport question, deliberately separate from the device question
+// useDataConsent asks: a half-width desktop window belongs in the stacked layout too.
+const isDesktop = useMediaQuery('(min-width: 1024px)')
 
 // Handle on the (async) Viewer, so the Screenshot button can grab a canvas PNG.
 const viewerRef = ref<{ captureScreenshot: () => Promise<string | null> } | null>(null)
@@ -214,12 +222,6 @@ watch(
   { deep: true },
 )
 
-// Copy a link to the exact current configuration.
-const { copy, copied } = useClipboard()
-function copyLink() {
-  copy(window.location.href)
-}
-
 // Save a screenshot of the current viewer render as a PNG (named after the design
 // + params, like exports). Doubles as the source for a gallery thumbnail: rename it
 // to `thumb.png` in `src/designs/<slug>/`. Silently no-ops if nothing is rendered.
@@ -264,246 +266,248 @@ async function downloadExport(format: 'STEP' | '3MF') {
 </script>
 
 <template>
-  <!-- Two resizable panes (drag the handle between them). Sizes in rem so the
-       control pane matches the old fixed w-96; persisted to localStorage. -->
-  <UDashboardGroup storage="local" storage-key="lab-layout" unit="rem">
-    <!-- Left: tabbed form / code + export -->
-    <UDashboardPanel id="controls" resizable :default-size="24" :min-size="18" :max-size="44" class="bg-white">
-      <header class="flex flex-col border-b border-primary-200 bg-primary-50">
-        <div class="flex items-start justify-between gap-2 px-5 py-3">
-          <div class="flex min-w-0 items-start gap-2">
-            <UButton
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              icon="i-lucide-arrow-left"
-              :to="{ name: 'gallery' }"
-              title="Back to gallery"
-              class="mt-0.5 shrink-0"
-            />
-            <div class="min-w-0">
-              <h1 class="truncate text-lg font-semibold text-neutral-800">
-                {{ designName }}
-              </h1>
-              <p class="text-sm text-neutral-500">
-                {{ branding.galleryName }}
-              </p>
-            </div>
-          </div>
-          <div class="flex shrink-0 flex-col items-end">
-            <UButton
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              :icon="copied ? 'i-lucide-check' : 'i-lucide-link'"
-              :label="copied ? 'Copied!' : 'Copy link'"
-              @click="copyLink"
-            />
-            <UButton
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              icon="i-lucide-camera"
-              label="Screenshot"
-              title="Save a PNG of the current view"
-              :disabled="!shapes"
-              @click="saveScreenshot"
-            />
-          </div>
-        </div>
-      </header>
+  <!-- Wide: two resizable panes (drag the handle between them), sizes in rem and
+       persisted to localStorage. Narrow: the same two panes stacked, viewer on top —
+       `flex-col-reverse` gets it above the controls without reordering the DOM, so tab
+       order stays header → form → export → viewer. The group's own base class is
+       `fixed inset-0`, overridden here because it now sits inside the column that
+       carries the mobile header. -->
+  <div class="fixed inset-0 flex flex-col overflow-hidden">
+    <GeneratorHeader
+      v-if="!isDesktop"
+      class="shrink-0"
+      compact
+      :design-name="designName"
+      :has-shapes="!!shapes"
+      @screenshot="saveScreenshot"
+      @open-code="openCode"
+    />
 
-      <!-- Pane body: the form, with the source view layered over it on demand. -->
-      <div class="relative flex min-h-0 grow flex-col">
-        <!-- The footer (export + project links) is pinned at the bottom of the
-             form, so it's specific to a design's parameters. -->
-        <div class="flex min-h-0 grow flex-col">
-          <div class="min-h-0 grow overflow-y-auto px-5 py-5">
-            <UAlert
-              v-if="reloadError"
-              color="error"
-              variant="subtle"
-              icon="i-lucide-circle-alert"
-              class="mb-5"
-              title="Design failed to load"
-            >
-              <template #description>
-                <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-xs">{{ reloadError }}</pre>
-              </template>
-            </UAlert>
-            <div v-if="!schema" class="flex items-center gap-2 text-sm text-neutral-400">
-              <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
-              Loading design…
-            </div>
-            <template v-else>
-              <!-- Preset strip: the design's curated starting points, bled to the
-                   pane edges so it reads as a header for the form below it. -->
-              <div
-                v-if="presets.length"
-                class="-mx-5 mb-5 border-b border-neutral-200 bg-neutral-50 px-5 py-3"
-                :class="reloadError ? '' : '-mt-5'"
+    <UDashboardGroup
+      storage="local"
+      storage-key="lab-layout"
+      unit="rem"
+      class="relative min-h-0 flex-1 max-lg:flex-col-reverse"
+    >
+      <!-- Left: tabbed form / code + export -->
+      <UDashboardPanel
+        id="controls"
+        resizable
+        :default-size="24"
+        :min-size="18"
+        :max-size="44"
+        class="bg-white max-lg:min-h-0 max-lg:flex-1"
+      >
+        <GeneratorHeader
+          v-if="isDesktop"
+          :design-name="designName"
+          :has-shapes="!!shapes"
+          @screenshot="saveScreenshot"
+          @open-code="openCode"
+        />
+
+        <!-- Pane body: the form, with the source view layered over it on demand. -->
+        <div class="relative flex min-h-0 grow flex-col">
+          <!-- The footer (export + project links) is pinned at the bottom of the
+               form, so it's specific to a design's parameters. -->
+          <div class="flex min-h-0 grow flex-col">
+            <div class="min-h-0 grow overflow-y-auto px-5 py-5">
+              <UAlert
+                v-if="reloadError"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-circle-alert"
+                class="mb-5"
+                title="Design failed to load"
               >
-                <div class="flex items-baseline justify-between gap-2">
-                  <span class="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
-                    {{ presetLabel }} preset
-                  </span>
+                <template #description>
+                  <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-xs">{{ reloadError }}</pre>
+                </template>
+              </UAlert>
+              <div v-if="!schema" class="flex items-center gap-2 text-sm text-neutral-400">
+                <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
+                Loading design…
+              </div>
+              <template v-else>
+                <!-- Preset strip: the design's curated starting points, bled to the
+                     pane edges so it reads as a header for the form below it. -->
+                <div
+                  v-if="presets.length"
+                  class="-mx-5 mb-5 border-b border-neutral-200 bg-neutral-50 px-5 py-3"
+                  :class="reloadError ? '' : '-mt-5'"
+                >
+                  <div class="flex items-baseline justify-between gap-2">
+                    <span class="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+                      {{ presetLabel }} preset
+                    </span>
+                    <UButton
+                      v-if="presetEdited && activePreset"
+                      size="xs"
+                      variant="link"
+                      color="primary"
+                      class="p-0"
+                      :label="`Reset to ${activePreset}`"
+                      @click="applyPreset(presets.find((p) => p.name === activePreset)!)"
+                    />
+                  </div>
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    <UTooltip
+                      v-for="p in presets"
+                      :key="p.name"
+                      :text="p.description"
+                      :delay-duration="0"
+                    >
+                      <UButton
+                        size="xs"
+                        :color="p.name === activePreset ? 'primary' : 'neutral'"
+                        :variant="p.name === activePreset ? 'solid' : 'outline'"
+                        @click="applyPreset(p)"
+                      >
+                        {{ p.name }}
+                        <span v-if="p.name === activePreset && presetEdited" class="opacity-75">· edited</span>
+                      </UButton>
+                    </UTooltip>
+                  </div>
+                  <p v-if="activeDescription" class="mt-2 text-xs text-neutral-500">
+                    {{ activeDescription }}
+                  </p>
+                </div>
+
+                <ParamForm
+                  v-model="params"
+                  :schema="schema"
+                  :field-errors="fieldErrors"
+                  :preset-group-label="presetGroupLabel"
+                />
+
+                <div v-if="report" class="mt-6 border-t border-neutral-200 pt-5">
+                  <PrintabilityPanel :report="report" />
+                </div>
+              </template>
+            </div>
+
+            <footer class="border-t border-neutral-200 px-5 py-2">
+              <!-- Split button: primary action remembers the last-used format; the
+                   dropdown chevron switches between 3MF and STEP. -->
+              <UFieldGroup class="w-full">
+                <UButton
+                  class="grow justify-center" color="primary" variant="solid" icon="i-lucide-download"
+                  :loading="!!exporting" :disabled="!!exporting || !schema" @click="downloadExport(exportFormat)"
+                >
+                  {{ exporting ? `Exporting ${exporting}…` : `Export ${exportFormat}` }}
+                </UButton>
+                <UDropdownMenu :items="exportItems" :disabled="!!exporting || !schema" :content="{ align: 'end' }">
+                  <UButton color="primary" variant="solid" icon="i-lucide-chevron-down" :disabled="!!exporting || !schema" />
+                </UDropdownMenu>
+              </UFieldGroup>
+
+              <!-- Per-design links: the design's own LINKS plus an auto-generated
+                   link to its source .py on GitHub. -->
+              <div class="mt-2 flex justify-between border-t border-neutral-200 pt-1">
+                <div class="flex flex-wrap items-center gap-1">
                   <UButton
-                    v-if="presetEdited && activePreset"
+                    v-for="link in designLinks"
+                    :key="link.url"
                     size="xs"
-                    variant="link"
-                    color="primary"
-                    class="p-0"
-                    :label="`Reset to ${activePreset}`"
-                    @click="applyPreset(presets.find((p) => p.name === activePreset)!)"
+                    variant="ghost"
+                    color="neutral"
+                    :icon="link.icon"
+                    :label="link.label"
+                    :to="link.url"
+                    external
+                    target="_blank"
                   />
                 </div>
-                <div class="mt-2 flex flex-wrap gap-1.5">
-                  <UTooltip
-                    v-for="p in presets"
-                    :key="p.name"
-                    :text="p.description"
-                    :delay-duration="0"
-                  >
-                    <UButton
-                      size="xs"
-                      :color="p.name === activePreset ? 'primary' : 'neutral'"
-                      :variant="p.name === activePreset ? 'solid' : 'outline'"
-                      @click="applyPreset(p)"
-                    >
-                      {{ p.name }}
-                      <span v-if="p.name === activePreset && presetEdited" class="opacity-75">· edited</span>
-                    </UButton>
-                  </UTooltip>
-                </div>
-                <p v-if="activeDescription" class="mt-2 text-xs text-neutral-500">
-                  {{ activeDescription }}
-                </p>
-              </div>
-
-              <ParamForm
-                v-model="params"
-                :schema="schema"
-                :field-errors="fieldErrors"
-                :preset-group-label="presetGroupLabel"
-              />
-
-              <div v-if="report" class="mt-6 border-t border-neutral-200 pt-5">
-                <PrintabilityPanel :report="report" />
-              </div>
-            </template>
-          </div>
-
-          <footer class="border-t border-neutral-200 px-5 py-2">
-            <!-- Split button: primary action remembers the last-used format; the
-                 dropdown chevron switches between 3MF and STEP. -->
-            <UFieldGroup class="w-full">
-              <UButton
-                class="grow justify-center" color="primary" variant="solid" icon="i-lucide-download"
-                :loading="!!exporting" :disabled="!!exporting || !schema" @click="downloadExport(exportFormat)"
-              >
-                {{ exporting ? `Exporting ${exporting}…` : `Export ${exportFormat}` }}
-              </UButton>
-              <UDropdownMenu :items="exportItems" :disabled="!!exporting || !schema" :content="{ align: 'end' }">
-                <UButton color="primary" variant="solid" icon="i-lucide-chevron-down" :disabled="!!exporting || !schema" />
-              </UDropdownMenu>
-            </UFieldGroup>
-
-            <!-- Per-design links: the design's own LINKS plus an auto-generated
-                 link to its source .py on GitHub. -->
-            <div class="mt-2 flex justify-between border-t border-neutral-200 pt-1">
-              <div class="flex flex-wrap items-center gap-1">
+                <!-- Stacked, this lives in the header's overflow menu instead. -->
                 <UButton
-                  v-for="link in designLinks"
-                  :key="link.url"
                   size="xs"
                   variant="ghost"
                   color="neutral"
-                  :icon="link.icon"
-                  :label="link.label"
-                  :to="link.url"
-                  external
-                  target="_blank"
+                  icon="i-lucide-code"
+                  label="View code"
+                  title="View this design's source"
+                  class="max-lg:hidden"
+                  @click="openCode"
                 />
               </div>
-              <UButton
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-code"
-                label="View code"
-                title="View this design's source"
-                @click="openCode"
-              />
-            </div>
-          </footer>
-        </div>
+            </footer>
+          </div>
 
-        <!-- Source view: read-only, slides over the form. Mounted on first open
-             and kept alive after that (see `codeMounted`). -->
-        <Transition
-          enter-active-class="transition-transform duration-200 ease-out"
-          leave-active-class="transition-transform duration-150 ease-in"
-          enter-from-class="translate-x-full"
-          leave-to-class="translate-x-full"
-        >
-          <div
-            v-if="codeMounted"
-            v-show="showCode"
-            class="absolute inset-0 z-10 flex flex-col bg-white"
+          <!-- Source view: read-only, slides over the form. Mounted on first open
+               and kept alive after that (see `codeMounted`). -->
+          <Transition
+            enter-active-class="transition-transform duration-200 ease-out"
+            leave-active-class="transition-transform duration-150 ease-in"
+            enter-from-class="translate-x-full"
+            leave-to-class="translate-x-full"
           >
             <div
-              class="flex items-center gap-1.5 border-b border-neutral-200 py-2 pr-2 pl-3
-                     text-xs text-neutral-500"
+              v-if="codeMounted"
+              v-show="showCode"
+              class="absolute inset-0 z-10 flex flex-col bg-white"
             >
-              <UIcon name="i-lucide-lock" class="size-3 shrink-0" />
-              <span class="truncate">Read-only — {{ slug }}/design.py, as it runs.</span>
-              <div class="grow" />
-              <UButton
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-external-link"
-                :to="sourceUrl"
-                external
-                target="_blank"
-                title="View on GitHub"
-              />
-              <UButton
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-x"
-                title="Close (Esc)"
-                @click="showCode = false"
-              />
+              <div
+                class="flex items-center gap-1.5 border-b border-neutral-200 py-2 pr-2 pl-3
+                       text-xs text-neutral-500"
+              >
+                <UIcon name="i-lucide-lock" class="size-3 shrink-0" />
+                <span class="truncate">Read-only — {{ slug }}/design.py, as it runs.</span>
+                <div class="grow" />
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  icon="i-lucide-external-link"
+                  :to="sourceUrl"
+                  external
+                  target="_blank"
+                  title="View on GitHub"
+                />
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  icon="i-lucide-x"
+                  title="Close (Esc)"
+                  @click="showCode = false"
+                />
+              </div>
+              <Suspense>
+                <CodeEditor
+                  :model-value="source"
+                  :loading="reloading"
+                  class="min-h-0 grow"
+                />
+                <template #fallback>
+                  <div class="flex grow items-center justify-center text-sm text-neutral-400">
+                    Loading editor…
+                  </div>
+                </template>
+              </Suspense>
             </div>
-            <Suspense>
-              <CodeEditor
-                :model-value="source"
-                :loading="reloading"
-                class="min-h-0 grow"
-              />
-              <template #fallback>
-                <div class="flex grow items-center justify-center text-sm text-neutral-400">
-                  Loading editor…
-                </div>
-              </template>
-            </Suspense>
-          </div>
-        </Transition>
-      </div>
-    </UDashboardPanel>
+          </Transition>
+        </div>
+      </UDashboardPanel>
 
-    <!-- Right: viewer -->
-    <UDashboardPanel id="viewer" class="bg-neutral-100">
-      <Suspense>
-        <Viewer ref="viewerRef" :shapes="shapes" :building="building" />
-        <template #fallback>
-          <div class="flex h-full items-center justify-center text-sm text-neutral-400">
-            Loading viewer…
-          </div>
-        </template>
-      </Suspense>
-    </UDashboardPanel>
-  </UDashboardGroup>
+      <!-- Right: viewer. Stacked, it gets a fixed slice of the screen — `svh` rather
+           than `vh` so it doesn't jump when mobile browser chrome hides on scroll.
+           Viewer.vue's ResizeObserver picks the new size up on its own.
+           `flex-none` is load-bearing: this panel has no `resizable`, so Nuxt UI's
+           theme gives it `flex-1`, and a flex-basis of 0 beats `h-` on the main axis —
+           without it the two panes just split the screen evenly. -->
+      <UDashboardPanel
+        id="viewer"
+        class="bg-neutral-100 max-lg:h-[45svh] max-lg:min-h-0 max-lg:flex-none"
+      >
+        <Suspense>
+          <Viewer ref="viewerRef" :shapes="shapes" :building="building" />
+          <template #fallback>
+            <div class="flex h-full items-center justify-center text-sm text-neutral-400">
+              Loading viewer…
+            </div>
+          </template>
+        </Suspense>
+      </UDashboardPanel>
+    </UDashboardGroup>
+  </div>
 </template>

@@ -11,7 +11,11 @@ import type {
 import { inject, onScopeDispose, ref, shallowRef } from 'vue'
 import { resolveSchema } from '../lib/resolveSchema'
 
-export type BootStatus = 'booting' | 'ready' | 'error'
+/**
+ * `idle` is the pre-boot state: the composable is live but no SharedWorker exists yet,
+ * so not a byte of the ~41 MB CAD kernel has been requested. `connect()` leaves it.
+ */
+export type BootStatus = 'idle' | 'booting' | 'ready' | 'error'
 
 /** The reactive worker bundle App.vue provides to the views. */
 export type DesignWorker = ReturnType<typeof useDesignWorker>
@@ -31,7 +35,7 @@ const BUILD_DEBOUNCE_MS = 120
 const RELOAD_DEBOUNCE_MS = 250
 
 export function useDesignWorker() {
-  const status = ref<BootStatus>('booting')
+  const status = ref<BootStatus>('idle')
   const bootStage = ref('Starting…')
   const bootProgress = ref(0)
   const bootError = ref<string | null>(null)
@@ -73,6 +77,7 @@ export function useDesignWorker() {
       report,
       reloadError,
       reloading,
+      connect: () => {},
       build: () => {},
       exportModel: () => Promise.reject(new Error('SharedWorker unsupported')),
       reloadDesign: () => {},
@@ -86,22 +91,34 @@ export function useDesignWorker() {
   // to lifecycle events (not per-build) to avoid drowning the log. The worker is
   // a SharedWorker, whose own console lives in a separate inspector context — so
   // these page-thread logs are what actually shows up in a screenshot.
-  const bootStart = performance.now()
+  let bootStart = 0
   // eslint-disable-next-line no-console
   const log = (...args: unknown[]) => console.info('[lab]', ...args)
 
-  let port: MessagePort
-  try {
+  // Nothing is fetched until this is called. Constructing the SharedWorker is what
+  // kicks off the multi-megabyte kernel download, so it's deliberately *not* a side
+  // effect of calling the composable — App.vue decides when (see useDataConsent).
+  // Idempotent: repeat calls (a second tab, an accepted prompt after a retry) no-op.
+  let port: MessagePort | null = null
+  function connect() {
+    if (port || status.value === 'error')
+      return
+    bootStart = performance.now()
+    status.value = 'booting'
     log('connecting to worker…')
-    const sw = new SharedWorker(new URL('../worker/pyodide.worker.ts', import.meta.url), {
-      type: 'module',
-    })
-    port = sw.port
-    port.start()
-  }
-  catch {
-    // Has SharedWorker but rejects module workers — same "please update" path.
-    return unsupported('This app needs a current browser (module SharedWorker support). Please update.')
+    try {
+      const sw = new SharedWorker(new URL('../worker/pyodide.worker.ts', import.meta.url), {
+        type: 'module',
+      })
+      port = sw.port
+      port.onmessage = handleMessage
+      port.start()
+    }
+    catch {
+      // Has SharedWorker but rejects module workers — same "please update" path.
+      status.value = 'error'
+      bootError.value = 'This app needs a current browser (module SharedWorker support). Please update.'
+    }
   }
 
   let nextId = 1
@@ -115,10 +132,10 @@ export function useDesignWorker() {
   >()
 
   function send(msg: WorkerRequest, transfer?: Transferable[]) {
-    port.postMessage(msg, transfer ?? [])
+    port?.postMessage(msg, transfer ?? [])
   }
 
-  port.onmessage = (e: MessageEvent<WorkerResponse>) => {
+  function handleMessage(e: MessageEvent<WorkerResponse>) {
     const msg = e.data
     switch (msg.type) {
       case 'boot':
@@ -243,10 +260,13 @@ export function useDesignWorker() {
   // Tell the shared worker to drop this tab's per-port state and close our port.
   // The worker keeps running for other tabs (the browser tears it down once the
   // last port closes). `pagehide` covers tab close / navigation, which does not
-  // trigger onScopeDispose.
+  // trigger onScopeDispose. No-ops when we never connected (consent declined).
   function disconnect() {
+    if (!port)
+      return
     port.postMessage({ type: 'disconnect' })
     port.close()
+    port = null
   }
   window.addEventListener('pagehide', disconnect)
 
@@ -273,6 +293,7 @@ export function useDesignWorker() {
     report,
     reloadError,
     reloading,
+    connect,
     build,
     exportModel,
     reloadDesign,

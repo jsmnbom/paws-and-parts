@@ -2,6 +2,8 @@
 import { defineAsyncComponent, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BootProgress from '../components/BootProgress.vue'
+import DataWarning from '../components/DataWarning.vue'
+import { useDataConsent } from '../composables/useDataConsent'
 import { injectDesignWorker } from '../composables/useDesignWorker'
 import { getDesign } from '../designs/manifest'
 
@@ -43,11 +45,26 @@ watch(
 watch(status, selectDesign)
 
 const meta = () => getDesign(props.slug)
+
+// The engine is still `idle` only when App.vue held it back over data use. Opening a
+// design is the point where the download actually buys the user something, so that's
+// where we ask. Accepting boots; the `status` watcher above then selects this design.
+const { grant } = useDataConsent()
+function acceptDownload() {
+  grant()
+  worker.connect()
+}
 </script>
 
 <template>
+  <!-- Held back over data use: ask before fetching anything. Declining returns to the
+       gallery, which stays fully browsable without the engine. -->
+  <div v-if="status === 'idle'" class="fixed inset-0 z-50">
+    <DataWarning @accept="acceptDownload" @decline="router.push({ name: 'gallery' })" />
+  </div>
+
   <!-- Engine boot / fatal boot error take the whole screen. -->
-  <div v-if="status === 'error'" class="fixed inset-0 z-50">
+  <div v-else-if="status === 'error'" class="fixed inset-0 z-50">
     <BootProgress :stage="bootStage" :progress="bootProgress" :error="bootError" />
   </div>
   <div v-else-if="status === 'booting'" class="fixed inset-0 z-50">

@@ -272,7 +272,7 @@ function numberFormatOptions(f: SliderField) {
             @update:model-value="(v: number | number[]) => setValue(f.name, Array.isArray(v) ? v[0] : v)"
           />
           <UInputNumber
-            class="w-28 shrink-0"
+            class="w-28 shrink-0 max-sm:w-20"
             :size="f.size"
             :model-value="(modelValue[f.name] as number)"
             :min="f.inputMin"

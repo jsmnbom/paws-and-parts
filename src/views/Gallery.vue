@@ -66,7 +66,7 @@ watch(status, (s) => {
       class="fixed inset-x-0 top-0 z-50"
     />
     <div class="mx-auto max-w-6xl px-6 py-10">
-      <header class="mb-8 flex items-end justify-between gap-4">
+      <header class="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div class="min-w-0">
           <h1 class="text-2xl font-semibold text-neutral-900">
             {{ branding.galleryName }}
