@@ -13,19 +13,23 @@ const props = defineProps<{
   pending: boolean
 }>()
 
-// Where each phase sits. Geometry is by far the longest and has no internal
-// signal, so it eases toward its ceiling with elapsed time (below) rather than
-// sitting still; tessellation and analysis are short enough to just step.
+// Where each phase sits. Geometry and tessellation are both long with no
+// internal signal, so each eases toward its ceiling with elapsed time (below)
+// rather than sitting still; tessellation can in fact be the slower of the two
+// (heavier shapes cost more to mesh than to build). Analysis is short enough to
+// just step.
 const STAGE_SPAN: Record<BuildStage, [number, number]> = {
   building: [0.05, 0.5],
   tessellating: [0.5, 0.9],
   analyzing: [0.9, 1],
 }
 
-// How fast `building` approaches its ceiling: after this long it's ~63% of the
-// way through its span. Loosely the build time we expect, and forgiving in both
-// directions — a quick build barely gets going, a slow one never stalls.
+// How fast `building`/`tessellating` approach their ceiling: after this long
+// each is ~63% of the way through its span. Loosely the time we expect each
+// phase to take, and forgiving in both directions — a quick phase barely gets
+// going, a slow one never stalls.
 const GEOMETRY_TAU_MS = 900
+const TESSELLATE_TAU_MS = 900
 
 // Nothing is drawn for the first moments of a build, so the common sub-200 ms
 // rebuild passes without a flash of chrome.
@@ -61,8 +65,9 @@ function tick() {
   if (!stage)
     return
   const [from, to] = STAGE_SPAN[stage]
-  const eased = stage === 'building'
-    ? from + (to - from) * (1 - Math.exp(-(performance.now() - stageStart) / GEOMETRY_TAU_MS))
+  const tau = stage === 'building' ? GEOMETRY_TAU_MS : stage === 'tessellating' ? TESSELLATE_TAU_MS : null
+  const eased = tau !== null
+    ? from + (to - from) * (1 - Math.exp(-(performance.now() - stageStart) / tau))
     : to
   // Only ever forward: a build that overtakes another inherits its position
   // rather than snapping backwards, so a drag reads as one continuous run.
