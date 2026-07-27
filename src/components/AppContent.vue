@@ -53,8 +53,12 @@ const exporting = ref<string | null>(null)
 // useDataConsent asks: a half-width desktop window belongs in the stacked layout too.
 const isDesktop = useMediaQuery('(min-width: 1024px)')
 
-// Handle on the (async) Viewer, so the Screenshot button can grab a canvas PNG.
-const viewerRef = ref<{ captureScreenshot: () => Promise<string | null> } | null>(null)
+// Handle on the (async) Viewer, so the Screenshot button can grab a canvas PNG
+// and big parameter changes can ask for the default framing back.
+const viewerRef = ref<{
+  captureScreenshot: () => Promise<string | null>
+  resetView: () => void
+} | null>(null)
 
 // The source view is a layer over the form, not a mode you switch into. Monaco is
 // mounted on first open and then kept alive (hidden with v-show), so reopening is
@@ -154,6 +158,9 @@ function applyPreset(p: Preset) {
   }
   params.value = next
   activePreset.value = p.name
+  // A preset rewrites everything the user didn't pin, so the view it was framed
+  // for is gone — start the new one centred.
+  viewerRef.value?.resetView()
 }
 
 // Tweaking a preset's field doesn't clear the selection, it marks it — the chip
@@ -221,6 +228,19 @@ watch(
   },
   { deep: true },
 )
+
+// A few parameters rearrange the whole design rather than tweak it — the design
+// flags them `recenter` (for the chain, its layout). The viewer otherwise holds
+// the camera across rebuilds, which is right for nudging a dimension and wrong
+// here, so reframe on the result. Keyed on the flagged fields' values only, so
+// every other slider still keeps the view.
+const recenterKey = computed(() =>
+  Object.entries(schema.value?.properties ?? {})
+    .filter(([, prop]) => prop.recenter)
+    .map(([name]) => `${name}=${params.value[name]}`)
+    .join('|'),
+)
+watch(recenterKey, () => viewerRef.value?.resetView())
 
 // Save a screenshot of the current viewer render as a PNG (named after the design
 // + params, like exports). Doubles as the source for a gallery thumbnail: rename it

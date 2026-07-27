@@ -28,6 +28,13 @@ let keptTarget: number[] | null = null
 let keptZoom: number | null = null
 let keptCameraDistance: number | null = null
 
+// A pending recenter request from the host (see resetView): the *next* render
+// drops the kept camera, so the viewer frames the new shape the way it framed the
+// first one. It's a flag rather than an immediate clear because the rebuild it
+// belongs to is debounced and asynchronous — orbiting while it runs must not
+// quietly re-capture a camera and cancel the recenter.
+let resetOnNextRender = false
+
 const TREE_WIDTH = 240
 const GLASS = true
 
@@ -184,7 +191,8 @@ function renderShapes(shapes: Shapes) {
   if (hasRendered)
     viewer.clear()
 
-  const keep = keepViewOptions(shapes)
+  const keep = resetOnNextRender ? null : keepViewOptions(shapes)
+  resetOnNextRender = false
   // Zoom compensation only applies once a previous frame established a distance.
   const priorZoom = keep ? keptZoom : null
   const priorDistance = keep ? keptCameraDistance : null
@@ -236,7 +244,15 @@ async function captureScreenshot(): Promise<string | null> {
   }
 }
 
-defineExpose({ captureScreenshot })
+// Ask for the default framing back on the next rebuild. The host calls this when
+// a parameter change is big enough that the old camera stops making sense (a
+// preset, or a field the design flagged `recenter`) — the kept view is right for
+// nudging a dimension, wrong when the thing you were looking at is gone.
+function resetView() {
+  resetOnNextRender = true
+}
+
+defineExpose({ captureScreenshot, resetView })
 
 onMounted(() => {
   createViewer()

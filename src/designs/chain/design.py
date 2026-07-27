@@ -204,6 +204,9 @@ class Parameters(BaseModel):
       ),
     ],
     preset_stable=True,
+    # A line and a spiral of the same links occupy wildly different footprints,
+    # so hold no camera across the switch — reframe on the new one.
+    recenter=True,
   )
   """Arrange the links in a straight line or a flat Archimedean spiral. Both print
   flat and interlock the same way."""

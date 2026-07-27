@@ -134,6 +134,10 @@ export interface JsonSchemaProperty {
   // count, layout and center skip). It also splits the form — stable fields are
   // declared first, and the preset rule sits above the first field that isn't one.
   preset_stable?: boolean
+  // Changing this field rearranges the whole design rather than tweaking it, so
+  // the viewer reframes on the result instead of holding the current camera (the
+  // chain's line/spiral layout). Applying a preset recenters too, always.
+  recenter?: boolean
   [key: string]: unknown
 }
 

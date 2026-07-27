@@ -245,8 +245,10 @@ def outline_svg(wire: Wire) -> dict:
 # hints ride along in ``json_schema_extra``; ``name`` is the form label, and the
 # field's *attribute docstring* is its description. Options common to all:
 # ``size`` (a Nuxt UI token), ``show_if`` (conditional visibility: a map of
-# other-field -> required value(s)), and ``preset_stable`` (this field belongs to
-# the user, not to a preset — see ``Design.PRESETS``).
+# other-field -> required value(s)), ``preset_stable`` (this field belongs to
+# the user, not to a preset — see ``Design.PRESETS``), and ``recenter`` (changing
+# it reframes the 3D view instead of holding the current camera — for the few
+# parameters that rearrange the whole design rather than tweak it).
 
 
 def _hints(widget: str, name: str, **hints: Any) -> dict:
@@ -297,6 +299,7 @@ def SliderField(
   # literal `{"decagon": 2}` wouldn't fit a `dict[str, float]` parameter.
   slider_max_by: Mapping[str, Mapping[str, float]] | None = None,
   preset_stable: bool = False,
+  recenter: bool = False,
 ) -> Any:
   """A numeric slider + number input.
 
@@ -329,6 +332,7 @@ def SliderField(
       show_if=show_if,
       slider_max_by=slider_max_by,
       preset_stable=preset_stable,
+      recenter=recenter,
     ),
   )
 
@@ -342,6 +346,7 @@ def ChoiceField(
   size: str | None = None,
   show_if: Mapping[str, Any] | None = None,
   preset_stable: bool = False,
+  recenter: bool = False,
 ) -> Any:
   """A picker over a ``Choice`` type. ``preview(member)`` builds the outline each
   option is drawn as, at an icon-sized scale — anything with a ``.wire()`` (a
@@ -363,6 +368,7 @@ def ChoiceField(
       size=size,
       show_if=show_if,
       preset_stable=preset_stable,
+      recenter=recenter,
     ),
   )
 
@@ -375,6 +381,7 @@ def SelectField(
   size: str | None = None,
   show_if: Mapping[str, Any] | None = None,
   preset_stable: bool = False,
+  recenter: bool = False,
 ) -> Any:
   """A plain dropdown over ``choices`` — for ``Literal``/enum fields (e.g. a
   brim style) whose options are values rather than geometry builders."""
@@ -387,6 +394,7 @@ def SelectField(
       size=size,
       show_if=show_if,
       preset_stable=preset_stable,
+      recenter=recenter,
     ),
   )
 
@@ -399,6 +407,7 @@ def CardsField(
   size: str | None = None,
   show_if: Mapping[str, Any] | None = None,
   preset_stable: bool = False,
+  recenter: bool = False,
 ) -> Any:
   """The same options as ``SelectField``, laid out as big side-by-side tiles
   instead of a dropdown — for a prominent mode toggle where the choice deserves
@@ -412,6 +421,7 @@ def CardsField(
       size=size,
       show_if=show_if,
       preset_stable=preset_stable,
+      recenter=recenter,
     ),
   )
 

@@ -106,7 +106,10 @@ Keep the contract clean; don't leak chain-specifics into
   render). A field's **attribute docstring** is its description — `proto.BaseModel`
   sets `use_attribute_docstrings=True`, which is why `reload_design` must give the
   design a real module identity (below). Add a new parameter type by adding a
-  helper there + a branch in `ParamForm.vue`. "How to show the form" stays
+  helper there + a branch in `ParamForm.vue`. All four also take
+  `recenter=True` (the chain's `layout`): the viewer normally holds the user's
+  camera across rebuilds, but a flagged field — like applying a preset, which
+  always does it — reframes on the new geometry instead (`Viewer.resetView()`). "How to show the form" stays
   co-located with the design. The schema→component mapping is in
   `src/components/ParamForm.vue`; `src/lib/resolveSchema.ts` flattens pydantic's
   `$ref`/`$defs` first.
