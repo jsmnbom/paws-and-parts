@@ -323,25 +323,30 @@ onBeforeUnmount(() => {
   margin: 0 !important;
 
   /* Pink accent — drives the active-tab underline + selected borders. */
-  --tcv-theme-blue: #db2777;
+  --tcv-theme-blue: var(--ui-color-primary-500);
   /* Frosted-white glass panels (toolbar / tree / info). */
   --tcv-bg-overlay-color: rgba(255, 255, 255, 0.9);
   --tcv-bg-overlay-rest-color: rgba(255, 255, 255, 0.82);
-  /* Pink-tint hover / pressed states. Icons keep tcv's dark data-URI glyphs —
-     recoloring those (1b's white-on-pink button) would mean overriding dozens of
-     baked-in SVG urls, so the pink tint is the accent we carry here instead. */
-  --tcv-bg-highlight-color: #fce7f3;
-  --tcv-bg-pressed-color: #fdf2f8;
-  --tcv-bg-pressed-border-color: #db2777;
+  /* Pink-tint hover / pressed states. The button glyphs themselves are recolored
+     to match by the tcvIcons() plugin in vite.config.ts, which rewrites the SVG
+     data URIs tcv bakes into its --tcv-icon-* vars. That plugin has to resolve
+     the same tokens to literals — a var() inside a data URI is never substituted
+     — so keep its UI_COLORS in sync with the palette used here. */
+  --tcv-bg-highlight-color: var(--ui-color-primary-100);
+  --tcv-bg-pressed-color: var(--ui-color-primary-50);
+  --tcv-bg-pressed-border-color: var(--ui-color-primary-500);
   /* Axis + orientation-marker colors (X/Y/Z per 1b). */
   --tcv-x-color: #dc2626;
   --tcv-y-color: #16a34a;
   --tcv-z-color: #2563eb;
   /* Pink-tinted shadows + tooltip. */
-  --tcv-shadow: rgba(157, 23, 77, 0.25);
-  --tcv-menu-shadow: rgba(157, 23, 77, 0.25);
-  --tcv-bg-tooltip-color: #fdf2f8;
-  --tcv-font-color: #3f3f46;
+  /* --tcv-shadow: rgba(157, 23, 77, 0.25);
+  --tcv-menu-shadow: rgba(157, 23, 77, 0.25); */
+  /* --tcv-bg-tooltip-color: #fdf2f8; */
+  --tcv-font-color: var(--ui-text);
+  /* The "clicked" indicator under a tree row; tcv's stock orange is the one warm
+     color left in the pane. */
+  --tcv-theme-led: var(--ui-color-primary-500);
 
   --tcv-ui-row-gap: 4px;
 
@@ -411,7 +416,14 @@ onBeforeUnmount(() => {
   .tcv_tools_label,
   .tcv_info_label,
   .tcv_tab-selected {
-    color: #9d174d;
+    color: var(--ui-color-primary-800);
+  }
+
+  /* Hovered/highlighted tree row. tcv hardcodes its stock blue here rather than
+     routing it through a --tcv-* var, so this is the one label color the theme
+     vars can't otherwise reach. */
+  .tv-node-label-highlight {
+    color: var(--ui-color-primary-500);
   }
 
   .tcv_cad_info_wrapper {
