@@ -60,7 +60,9 @@ onUnmounted(dismissWarmup)
 </script>
 
 <template>
-  <div class="min-h-full bg-neutral-50">
+  <!-- Scrolls on its own rather than through <body>, so nothing a generator leaves
+       styled on the page (see TCV_BODY_RULE in vite.config.ts) can pin it. -->
+  <div class="h-full overflow-y-auto bg-neutral-50">
     <!-- Boot progress: a thin bar pinned to the top of the viewport (in addition
          to the toast). Fixed so its appearance/removal never reflows the grid. -->
     <UProgress
@@ -127,6 +129,17 @@ onUnmounted(dismissWarmup)
                 </h2>
                 <UBadge v-if="d.author" size="sm" variant="subtle" color="neutral">
                   {{ d.author }}
+                </UBadge>
+                <!-- `__experimental__`: geometry/params may still move, and it hasn't
+                     been print-verified. These cards also sort to the end (manifest.ts). -->
+                <UBadge
+                  v-if="d.experimental"
+                  size="sm"
+                  variant="subtle"
+                  color="warning"
+                  icon="i-lucide-flask-conical"
+                >
+                  Experimental
                 </UBadge>
               </div>
               <p v-if="d.description" class="text-sm text-neutral-500">

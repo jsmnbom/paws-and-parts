@@ -25,7 +25,7 @@ from ocp_tessellate.convert import tessellate_group, to_ocpgroup
 from ocp_tessellate.utils import numpy_to_json
 from pydantic import ValidationError
 
-from proto import Design, Report, load_design
+from proto import BaseModel, Design, Report, clear_memo, fast_patch, load_design, memo_stats
 
 # The one Design subclass the active design module defines. All schema / build /
 # export / analyze flows go through this handle — the seam, bound in one place
@@ -74,7 +74,7 @@ def reload_design(source: str) -> str:
   On failure the previous ``ActiveDesign`` (and the previous module) is left
   untouched and ``{"ok": false, "error": <traceback>}`` is returned, so a bad edit
   surfaces its traceback instead of taking the app down."""
-  global ActiveDesign
+  global ActiveDesign, _last_built
   previous = sys.modules.get(_DESIGN_MODULE), linecache.cache.get(_DESIGN_FILE)
   module = types.ModuleType(_DESIGN_MODULE)
   module.__file__ = _DESIGN_FILE
@@ -100,6 +100,10 @@ def reload_design(source: str) -> str:
       linecache.cache[_DESIGN_FILE] = prev_lines
     return json.dumps({"ok": False, "error": traceback.format_exc()})
   ActiveDesign = design
+  # Nothing built by the previous module is valid for this one: drop the last
+  # build export would reuse, and every cached sub-part (they pin OCC geometry).
+  _last_built = None
+  clear_memo()
   return json.dumps(
     {
       "ok": True,
@@ -177,17 +181,27 @@ def show(obj, progress=None) -> None:
 # The worker drives them in order and is responsible for calling ``build_abandon``
 # on any path that doesn't reach ``build_analyze``.
 
-# The object built by ``build_geometry``, waiting to be tessellated/analyzed. It
-# pins OCC memory between calls, so every exit path clears it.
+# The object built by ``build_geometry``, waiting to be tessellated/analyzed, and
+# the validated parameters it was built from. It pins OCC memory between calls, so
+# every exit path clears it.
 _staged: Design | None = None
+_staged_params: BaseModel | None = None
+
+# The last build that ran to completion — what the viewer is showing — as
+# ``(design class, parameters, object)``. ``export_bytes`` reuses it when asked for
+# exactly those parameters instead of building them again. Only a finished build
+# replaces it (an abandoned or failed one leaves it alone); a design reload clears
+# it. Pins one design's geometry between builds: the same object that is on screen.
+_last_built: tuple[type[Design], BaseModel, Design] | None = None
 
 
 def build_geometry(params_json: str) -> str:
   """Phase 1 — validate the parameters and build the geometry, staging the result
   for the phases that follow. Returns ``{"ok": true}``, or ``{"ok": false,
   "errors": [...]}`` for inline display on the form."""
-  global _staged
+  global _staged, _staged_params
   _staged = None
+  _staged_params = None
 
   if ActiveDesign is None:
     return json.dumps({"ok": False, "errors": [{"loc": [], "msg": "No design loaded", "type": "no_design"}]})
@@ -198,13 +212,17 @@ def build_geometry(params_json: str) -> str:
   except ValidationError as exc:
     return json.dumps({"ok": False, "errors": _validation_errors(exc)})
 
+  memo_stats()  # reset, so the counts below are this build's
   try:
-    _staged = ActiveDesign(params)  # type: ignore[reportGeneralTypeIssues]
+    with fast_patch(ActiveDesign.FAST_PATCH):
+      _staged = ActiveDesign(params)  # type: ignore[reportGeneralTypeIssues]
   except Exception as exc:  # geometry error -> surface as a form-level message
     return json.dumps(
       {"ok": False, "errors": [{"loc": [], "msg": str(exc), "type": "build_error"}]}
     )
-  return json.dumps({"ok": True})
+  _staged_params = params
+  # `memo`: this build's sub-part cache hits/misses, for the worker's timing log.
+  return json.dumps({"ok": True, "memo": memo_stats()})
 
 
 def build_tessellate() -> str:
@@ -217,31 +235,38 @@ def build_tessellate() -> str:
 
 
 def build_analyze() -> str:
-  """Phase 3 — the printability report, and the end of the build. Never lets an
+  """Phase 3 — the analysis report, and the end of the build. Never lets an
   analysis failure break a build whose geometry is already on screen."""
-  global _staged
-  if _staged is None:
+  global _staged, _staged_params, _last_built
+  if _staged is None or ActiveDesign is None:
     return json.dumps({"ok": False, "errors": [{"loc": [], "msg": "Nothing staged", "type": "build_error"}]})
   try:
-    report = _staged.analyze().to_dict()
+    with fast_patch(ActiveDesign.FAST_PATCH):
+      report = _staged.analyze().to_dict()
   except Exception as exc:
-    report = Report.error(f"Printability analysis failed: {exc}").to_dict()
+    report = Report.error(f"Analysis failed: {exc}").to_dict()
+  if _staged_params is not None:
+    _last_built = (ActiveDesign, _staged_params, _staged)
   _staged = None
+  _staged_params = None
   return json.dumps({"ok": True, "report": report})
 
 
 def build_abandon() -> str:
   """Drop the staged geometry without finishing the build — the parameters it was
   built from are already out of date."""
-  global _staged
+  global _staged, _staged_params
   _staged = None
+  _staged_params = None
   return json.dumps({"ok": True})
 
 
 def export_bytes(params_json: str, fmt: str, name: str):
-  """Rebuild from ``params_json`` and return the exported file as ``bytes``.
-  Rebuilding (rather than reusing the last shown object) keeps exports in sync
-  with the current form even if the last render was for different params.
+  """Build ``params_json`` and return the exported file as ``bytes``. Exports
+  always match the parameters they were asked for, even when the last render was
+  for different ones — but when the last *finished* build was for exactly these
+  (pydantic equality, so key order and float formatting don't matter), that
+  object is exported as is instead of being built again (see ``_last_built``).
   ``name`` (the params-encoding basename the frontend already computed for the
   download filename, see ``exportFilename`` in ``paramsUrl.ts``) is reused as the
   3MF project's object name too, so the two stay in sync without recomputing the
@@ -251,7 +276,11 @@ def export_bytes(params_json: str, fmt: str, name: str):
 
   data = json.loads(params_json)
   params = ActiveDesign.Parameters(**data)
-  shape = ActiveDesign(params) # type: ignore[reportGeneralTypeIssues]
+  if _last_built is not None and _last_built[0] is ActiveDesign and _last_built[1] == params:
+    shape = _last_built[2]
+  else:
+    with fast_patch(ActiveDesign.FAST_PATCH):
+      shape = ActiveDesign(params)  # type: ignore[reportGeneralTypeIssues]
 
   fmt = fmt.upper()
   if fmt == "STEP":
@@ -265,7 +294,23 @@ def export_bytes(params_json: str, fmt: str, name: str):
     from orca123d import Project
 
     proj = Project()
-    if len(shape.children) > 0:
+    # A design whose pieces are separate parts to be assembled splits itself into
+    # one slicer object per piece (see `Design.export_objects`), so they can be
+    # arranged, recoloured or deleted individually — and each can sit at a
+    # different place for printing than it does in the Assembly View. Everything
+    # else is one object: the design as a single printed piece.
+    objects = shape.export_objects()
+    if objects:
+      for obj_spec in objects:
+        obj = proj.add_object(
+          obj_spec.shape,
+          name=obj_spec.name,
+          extruder=obj_spec.extruder,
+          print_location=obj_spec.print_location,
+        )
+        for part_spec in obj_spec.parts:
+          obj.add_part(part_spec.shape, name=part_spec.name, extruder=part_spec.extruder)
+    elif len(shape.children) > 0:
       obj = proj.add_object(None, name=name)
       for child in shape.children:
         obj.add_part(child)

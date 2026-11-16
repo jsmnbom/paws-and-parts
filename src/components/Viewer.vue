@@ -13,7 +13,11 @@ const props = defineProps<{
   /** The rebuild in flight, if any — drawn as a progress bar over the canvas. */
   buildStage: BuildStage | null
   buildPending: boolean
+  /** The latest build failed, so what's on screen is an older result. */
+  stale?: boolean
 }>()
+
+const emit = defineEmits<{ showError: [] }>()
 
 const host = ref<HTMLDivElement | null>(null)
 let display: any = null
@@ -290,6 +294,29 @@ onBeforeUnmount(() => {
   <div class="relative h-full w-full min-h-0 min-w-0 overflow-hidden">
     <div ref="host" class="h-full w-full" />
     <BuildProgress :stage="buildStage" :pending="buildPending" />
+    <!-- A failed build leaves the last good result up, which would otherwise look
+         exactly like a successful one. Bottom-centre: tcv's toolbar owns the top. -->
+    <div
+      v-if="stale"
+      class="pointer-events-none absolute inset-x-0 bottom-3 z-[110] flex justify-center px-3"
+    >
+      <div
+        class="pointer-events-auto flex items-center gap-2 border border-error-200 bg-error-50/95
+               px-3 py-1.5 text-xs text-error-700 shadow-sm backdrop-blur"
+        role="status"
+      >
+        <UIcon name="i-lucide-triangle-alert" class="size-3.5 shrink-0" />
+        <span>Build failed — showing the last successful result</span>
+        <UButton
+          size="xs"
+          variant="link"
+          color="error"
+          class="p-0"
+          label="Show error"
+          @click="emit('showError')"
+        />
+      </div>
+    </div>
   </div>
 </template>
 

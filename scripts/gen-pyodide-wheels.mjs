@@ -24,7 +24,7 @@ const WORKER_TS = resolve(HERE, '../src/worker/pyodide.worker.ts')
 const py = readFileSync(INSTALL_PY, 'utf8')
 
 // --- Guard: this Pyodide must match the one the worker loads from the CDN. ---
-const workerVersion = /PYODIDE_VERSION\s*=\s*"v?([\d.]+)"/.exec(readFileSync(WORKER_TS, 'utf8'))?.[1]
+const workerVersion = /PYODIDE_VERSION\s*=\s*['"]v?([\d.]+)['"]/.exec(readFileSync(WORKER_TS, 'utf8'))?.[1]
 if (workerVersion && workerVersion !== pyodideVersion) {
   console.error(
     `✖ pyodide npm (${pyodideVersion}) != worker PYODIDE_VERSION (v${workerVersion}). `
@@ -64,7 +64,7 @@ const wheelUrls = packages
 
 // Report the built-in roots the wheels depend on, so the worker's loadPackage list can
 // be kept in sync by hand (it must, since deps=False won't pull them).
-const MOCKS = new Set(['cadquery-ocp-novtk', 'ezdxf', 'ipython', 'lib3mf', 'scikit-learn', 'scipy', 'sympy'])
+const MOCKS = new Set(['cadquery-ocp-novtk', 'ezdxf', 'ipython', 'lib3mf', 'scikit-learn', 'scipy', 'sympy', 'threejs-materials'])
 const byName = Object.fromEntries(packages.map(p => [p.name.toLowerCase(), p]))
 const builtinRoots = new Set()
 for (const p of packages) {

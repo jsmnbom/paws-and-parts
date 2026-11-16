@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { FieldError, JsonSchema, JsonSchemaProperty, ShapeOption } from '../lib/protocol'
-import { computed } from 'vue'
-import ShapePreview from './ShapePreview.vue'
-import ShapeSelect from './ShapeSelect.vue'
+import type { Field, UiSize } from '../lib/formFields'
+import type { FieldError, JsonSchema, JsonSchemaProperty, ParamValue } from '../lib/protocol'
+import { computed, nextTick, ref } from 'vue'
+import ParamField from './ParamField.vue'
 
 const props = defineProps<{
   schema: JsonSchema
-  modelValue: Record<string, number | string>
+  modelValue: Record<string, ParamValue>
   fieldErrors: FieldError[]
   // Titles the fields a preset writes ("Link shape · Default"). Rendered as a
   // rule before the first field that isn't `preset_stable`, so the boundary
@@ -15,57 +15,67 @@ const props = defineProps<{
   presetGroupLabel?: string
 }>()
 
-const emit = defineEmits<{ 'update:modelValue': [Record<string, number | string>] }>()
+const emit = defineEmits<{ 'update:modelValue': [Record<string, ParamValue>] }>()
 
-// Nuxt UI's size scale, shared by the form field and its controls. The schema's
-// `size` hint carries these tokens directly; unset falls back to the default.
-type UiSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+// The schema's `size` hint carries Nuxt UI's size tokens directly; unset falls
+// back to the default.
 const DEFAULT_SIZE: UiSize = 'sm'
 function resolveSize(size?: string): UiSize {
   return (size as UiSize) ?? DEFAULT_SIZE
 }
 
-// A field is either a slider (numeric) or a dropdown. The discriminator is the
-// schema's `widget` hint (see proto.py's field helpers): "shape"/"select" render
-// the dropdown, "slider" the slider. A new widget kind is a new branch here. When
+// A field is a slider, a dropdown, a card row or a switch. The discriminator is
+// the schema's `widget` hint (see proto.py's field helpers): "shape"/"select"
+// render the dropdown, "cards" the tiles, "toggle" the switch, "slider" the
+// slider. A new widget kind is a new branch here and in ParamField.vue. When
 // `widget` is absent we fall back structurally (has `options` -> dropdown).
-interface SliderField {
-  kind: 'slider'
-  name: string
-  label: string
-  description?: string
-  size: UiSize
-  unit?: string
-  // Slider bounds: the comfortable range (json_schema_extra min/max).
-  sliderMin: number
-  sliderMax: number
-  // Number-input bounds: the hard validation limits (pydantic ge/le, i.e.
-  // minimum/maximum). These are wider than the slider, so a value can be typed
-  // past the slider's range but is still clamped to what the model accepts.
-  inputMin: number
-  inputMax: number
-  step: number
-  isInt: boolean
+function resolveField(name: string, p: JsonSchemaProperty): Field {
+  const label = p.label ?? p.title ?? name
+  const description = p.description
+  const def = p.default as ParamValue | undefined
+  const size = resolveSize(p.size)
+  const widget = p.widget ?? (p.options ? 'select' : 'slider')
+  if (widget === 'toggle' || p.type === 'boolean') {
+    return { kind: 'toggle', name, label, description, default: def, size }
+  }
+  if (widget === 'cards' && p.options) {
+    return { kind: 'cards', name, label, description, default: def, size, options: p.options }
+  }
+  if (widget !== 'slider' && p.options) {
+    return { kind: 'select', name, label, description, default: def, size, options: p.options }
+  }
+  const isInt = p.type === 'integer'
+  const hardMin = p.minimum ?? p.exclusiveMinimum
+  const hardMax = p.maximum ?? p.exclusiveMaximum
+  const sliderMin = p.sliderMin ?? hardMin ?? 0
+  let sliderMax = p.sliderMax ?? hardMax ?? 100
+  let inputMax = hardMax ?? sliderMax
+  // A `slider_max_by` hint tightens the max to depend on another field's
+  // current value (e.g. tilt_mult's max varies with cross_section). It is a
+  // real constraint here, so it caps both the slider and the number input.
+  for (const [field, byValue] of Object.entries(p.slider_max_by ?? {})) {
+    const dyn = byValue[props.modelValue[field] as string]
+    if (dyn != null) {
+      sliderMax = dyn
+      inputMax = dyn
+    }
+  }
+  return {
+    kind: 'slider',
+    name,
+    label,
+    description,
+    default: def,
+    size,
+    unit: p.unit,
+    sliderMin,
+    sliderMax,
+    inputMin: hardMin ?? sliderMin,
+    inputMax,
+    step: p.step ?? (isInt ? 1 : 0.1),
+    isInt,
+  }
 }
-interface SelectField {
-  kind: 'select'
-  name: string
-  label: string
-  description?: string
-  size: UiSize
-  options: ShapeOption[]
-}
-// Like a select, but laid out as big inline tiles (a prominent mode toggle) rather
-// than a dropdown. Same option shape; the `widget: "cards"` hint picks this branch.
-interface CardsField {
-  kind: 'cards'
-  name: string
-  label: string
-  description?: string
-  size: UiSize
-  options: ShapeOption[]
-}
-type Field = SliderField | SelectField | CardsField
 
 // A field with a `show_if` hint is rendered only when the current model value
 // matches every entry in it (e.g. brim_diameter shows only when brim === "ears",
@@ -81,60 +91,38 @@ function isVisible(p: JsonSchemaProperty): boolean {
   return Object.entries(p.show_if).every(([k, v]) => matchesShowIf(props.modelValue[k], v))
 }
 
-const fields = computed<Field[]>(() =>
-  Object.entries(props.schema.properties)
-    .filter(([, p]: [string, JsonSchemaProperty]) => isVisible(p))
-    .map(([name, p]: [string, JsonSchemaProperty]): Field => {
-      const label = p.label ?? p.title ?? name
-      const description = p.description
-      const size = resolveSize(p.size)
-      const widget = p.widget ?? (p.options ? 'select' : 'slider')
-      if (widget === 'cards' && p.options) {
-        return { kind: 'cards', name, label, description, size, options: p.options }
-      }
-      if (widget !== 'slider' && p.options) {
-        return { kind: 'select', name, label, description, size, options: p.options }
-      }
-      const isInt = p.type === 'integer'
-      const hardMin = p.minimum ?? p.exclusiveMinimum
-      const hardMax = p.maximum ?? p.exclusiveMaximum
-      const sliderMin = p.sliderMin ?? hardMin ?? 0
-      let sliderMax = p.sliderMax ?? hardMax ?? 100
-      let inputMax = hardMax ?? sliderMax
-      // A `slider_max_by` hint tightens the max to depend on another field's
-      // current value (e.g. tilt_mult's max varies with cross_section). It is a
-      // real constraint here, so it caps both the slider and the number input.
-      for (const [field, byValue] of Object.entries(p.slider_max_by ?? {})) {
-        const dyn = byValue[props.modelValue[field] as string]
-        if (dyn != null) {
-          sliderMax = dyn
-          inputMax = dyn
-        }
-      }
-      return {
-        kind: 'slider',
-        name,
-        label,
-        description,
-        size,
-        unit: p.unit,
-        sliderMin,
-        sliderMax,
-        inputMin: hardMin ?? sliderMin,
-        inputMax,
-        step: p.step ?? (isInt ? 1 : 0.1),
-        isInt,
-      }
-    }),
+const visible = computed<[string, JsonSchemaProperty][]>(() =>
+  Object.entries(props.schema.properties).filter(
+    ([, p]: [string, JsonSchemaProperty]) => isVisible(p),
+  ),
+)
+
+// The main run of controls, and the fit-and-finish ones a design flagged
+// `advanced` (fillets, tolerances). The latter keep their declaration order but
+// move as a block into the disclosure below, so the form leads with what people
+// actually reach for. A design that flags nothing renders exactly as before.
+const mainFields = computed<Field[]>(() =>
+  visible.value.filter(([, p]) => !p.advanced).map(([name, p]) => resolveField(name, p)),
+)
+const advancedFields = computed<Field[]>(() =>
+  visible.value.filter(([, p]) => p.advanced).map(([name, p]) => resolveField(name, p)),
+)
+
+// Closed until asked for — except that a validation error inside it must never
+// hide, so an errored advanced field forces the disclosure open.
+const advancedOpen = ref(false)
+const advancedIsOpen = computed(
+  () => advancedOpen.value || advancedFields.value.some(f => errorFor.value[f.name]),
 )
 
 // The visible field the preset rule sits above: the first one a preset would
 // write. Designs declare their `preset_stable` fields first (see design.py), so
-// this is the single split point rather than a per-field marker.
+// this is the single split point rather than a per-field marker. Advanced fields
+// are already past the boundary by construction, so the main run owns the rule.
 const groupStart = computed(() => {
   if (!props.presetGroupLabel)
     return null
-  return fields.value.find(f => !props.schema.properties[f.name]?.preset_stable)?.name ?? null
+  return mainFields.value.find(f => !props.schema.properties[f.name]?.preset_stable)?.name ?? null
 })
 
 // Map field name -> first error message. Errors with an empty loc are form-level.
@@ -150,7 +138,19 @@ const errorFor = computed<Record<string, string>>(() => {
 
 const formErrors = computed(() => props.fieldErrors.filter(e => e.loc.length === 0))
 
-function setValue(name: string, value: number | string) {
+// Bring the failure into view, for the "Build failed" banner over the viewer: the
+// form-level alert, or else the first field showing an error (opening "Advanced"
+// if that's where it is — `advancedIsOpen` already forces that).
+const root = ref<HTMLElement | null>(null)
+const formErrorsRef = ref<{ $el: HTMLElement } | null>(null)
+async function revealErrors() {
+  await nextTick()
+  const target = formErrorsRef.value?.$el ?? root.value?.querySelector('[data-slot="error"]')
+  target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+defineExpose({ revealErrors })
+
+function setValue(name: string, value: ParamValue) {
   // UInputNumber re-emits update:model-value on blur, so clicking away from a
   // field (e.g. into the viewer to orbit) fires this with an unchanged value.
   // Bail on no-ops so we don't push an identical params object and trigger a
@@ -159,53 +159,23 @@ function setValue(name: string, value: number | string) {
     return
   emit('update:modelValue', { ...props.modelValue, [name]: value })
 }
-
-// Intl.NumberFormat's `style: 'unit'` only accepts CLDR-sanctioned unit
-// identifiers ("millimeter", "degree", …) and throws a RangeError on anything
-// else ("mm", "°", "links"). Designs write the everyday symbol, so map the common
-// ones onto their CLDR name first…
-const UNIT_ALIASES: Record<string, string> = {
-  'mm': 'millimeter',
-  'cm': 'centimeter',
-  'm': 'meter',
-  'g': 'gram',
-  'deg': 'degree',
-  '°': 'degree',
-}
-function resolveUnit(unit: string): string {
-  return UNIT_ALIASES[unit] ?? unit
-}
-
-// …and for anything still outside the list ("links", "layers"), fall back to
-// plain decimal formatting, so an unsupported unit degrades to a bare number
-// instead of crashing the form.
-function isSupportedUnit(unit: string): boolean {
-  try {
-    // eslint-disable-next-line no-new
-    new Intl.NumberFormat(undefined, { style: 'unit', unit })
-    return true
-  }
-  catch {
-    return false
-  }
-}
-
-function numberFormatOptions(f: SliderField) {
-  const unit = f.unit ? resolveUnit(f.unit) : undefined
-  if (unit && isSupportedUnit(unit)) {
-    return {
-      style: 'unit',
-      unit,
-      unitDisplay: 'narrow',
-    }
-  }
-  return { style: 'decimal' }
-}
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
-    <template v-for="f in fields" :key="f.name">
+  <div ref="root" class="flex flex-col gap-5">
+    <!-- A build error that belongs to no one field (a geometry failure, a
+         cross-field rule) leads the form, where it can't be scrolled past. -->
+    <UAlert
+      v-if="formErrors.length"
+      ref="formErrorsRef"
+      color="error"
+      variant="soft"
+      icon="i-lucide-triangle-alert"
+      title="Build failed"
+      :description="formErrors.map((e) => e.msg).join('; ')"
+    />
+
+    <template v-for="f in mainFields" :key="f.name">
       <!-- Everything from here down is what the selected preset set. -->
       <div
         v-if="f.name === groupStart"
@@ -215,82 +185,40 @@ function numberFormatOptions(f: SliderField) {
         <span class="h-px grow bg-neutral-200" />
       </div>
 
-      <UFormField
-        :label="f.label"
+      <ParamField
+        :field="f"
+        :model-value="modelValue[f.name]"
         :error="errorFor[f.name]"
-        :size="f.size"
-      >
-        <!-- Label with an optional info icon; hovering it reveals the field's
-             description (desktop-only app, so a hover tooltip is the help idiom). -->
-        <template #label>
-          <span class="inline-flex items-center gap-1">
-            {{ f.label }}
-            <UTooltip v-if="f.description" :text="f.description" :delay-duration="0">
-              <UIcon name="i-lucide-info" class="size-3.5 shrink-0 cursor-help text-neutral-400" />
-            </UTooltip>
-          </span>
-        </template>
-
-        <!-- Big side-by-side tiles for a prominent mode toggle (widget: "cards"). -->
-        <div
-          v-if="f.kind === 'cards'"
-          class="grid gap-2"
-          :style="{ gridTemplateColumns: `repeat(${f.options.length}, minmax(0, 1fr))` }"
-        >
-          <button
-            v-for="opt in f.options"
-            :key="opt.value"
-            type="button"
-            class="flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors"
-            :class="modelValue[f.name] === opt.value
-              ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500 dark:bg-primary-950'
-              : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700'"
-            @click="setValue(f.name, opt.value)"
-          >
-            <ShapePreview v-if="opt.svg" :svg="opt.svg" :size="44" class="mb-0.5 text-neutral-600 dark:text-neutral-300" />
-            <span class="text-sm font-medium">{{ opt.label }}</span>
-            <span v-if="opt.description" class="text-xs text-neutral-500">{{ opt.description }}</span>
-          </button>
-        </div>
-
-        <ShapeSelect
-          v-else-if="f.kind === 'select'"
-          :model-value="modelValue[f.name]"
-          :options="f.options"
-          :size="f.size"
-          @update:model-value="(v: number | string) => setValue(f.name, v)"
-        />
-
-        <div v-else class="flex items-center gap-3">
-          <USlider
-            class="grow"
-            :size="f.size"
-            :model-value="(modelValue[f.name] as number)"
-            :min="f.sliderMin"
-            :max="f.sliderMax"
-            :step="f.step"
-            @update:model-value="(v: number | number[]) => setValue(f.name, Array.isArray(v) ? v[0] : v)"
-          />
-          <UInputNumber
-            class="w-28 shrink-0 max-sm:w-20"
-            :size="f.size"
-            :model-value="(modelValue[f.name] as number)"
-            :min="f.inputMin"
-            :max="f.inputMax"
-            :step="f.step"
-            :format-options="numberFormatOptions(f)"
-            @update:model-value="(v: number) => setValue(f.name, v)"
-          />
-        </div>
-      </UFormField>
+        @update:model-value="(v: ParamValue) => setValue(f.name, v)"
+      />
     </template>
 
-    <UAlert
-      v-if="formErrors.length"
-      color="error"
-      variant="soft"
-      icon="i-lucide-triangle-alert"
-      :title="formErrors.map((e) => e.msg).join('; ')"
-    />
+    <!-- Fit and finish: reachable, but out of the way until asked for. -->
+    <UCollapsible
+      v-if="advancedFields.length"
+      :open="advancedIsOpen"
+      @update:open="advancedOpen = $event"
+    >
+      <UButton
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        class="w-full justify-between px-0 hover:bg-transparent"
+        label="Advanced"
+        :trailing-icon="advancedIsOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+      />
+      <template #content>
+        <div class="flex flex-col gap-5 pt-3">
+          <ParamField
+            v-for="f in advancedFields"
+            :key="f.name"
+            :field="f"
+            :model-value="modelValue[f.name]"
+            :error="errorFor[f.name]"
+            @update:model-value="(v: ParamValue) => setValue(f.name, v)"
+          />
+        </div>
+      </template>
+    </UCollapsible>
   </div>
 </template>

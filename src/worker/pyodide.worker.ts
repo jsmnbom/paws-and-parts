@@ -23,7 +23,7 @@ import installSrc from '../python/install.py?raw'
 import protoSrc from '../python/proto.py?raw'
 import runtimeSrc from '../python/runtime.py?raw'
 
-const PYODIDE_VERSION = 'v314.0.2'
+const PYODIDE_VERSION = 'v314.0.7'
 const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/${PYODIDE_VERSION}/full/`
 
 let pyodide: any = null
@@ -172,6 +172,7 @@ async function runBuild(port: MessagePort, id: number, params: unknown): Promise
   // show, but useDesignWorker's `log` does.
   const start = performance.now()
   const times: { geometryMs?: number, tessellateMs?: number, analyzeMs?: number } = {}
+  let cache: { cacheHits?: number, cacheMisses?: number } = {}
   const timed = async <T>(phase: keyof typeof times, fn: () => Promise<T>): Promise<T> => {
     const t0 = performance.now()
     try {
@@ -181,7 +182,7 @@ async function runBuild(port: MessagePort, id: number, params: unknown): Promise
       times[phase] = performance.now() - t0
     }
   }
-  const postTimes = () => post(port, { type: 'build-timing', id, ...times, totalMs: performance.now() - start })
+  const postTimes = () => post(port, { type: 'build-timing', id, ...times, ...cache, totalMs: performance.now() - start })
 
   const abandon = async () => {
     await py('build_abandon()')
@@ -192,9 +193,11 @@ async function runBuild(port: MessagePort, id: number, params: unknown): Promise
   stage('building')
   pyodide.globals.set('_params_json', JSON.stringify(params))
   const built = JSON.parse(await timed('geometryMs', () => py('build_geometry(_params_json)'))) as BuildResult
+  if (built.memo)
+    cache = { cacheHits: built.memo.hits, cacheMisses: built.memo.misses }
   if (!built.ok) {
     postTimes()
-    post(port, { type: 'build-result', id, ...built })
+    post(port, { type: 'build-result', id, ok: built.ok, errors: built.errors })
     return
   }
 

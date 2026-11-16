@@ -116,6 +116,14 @@ const TCV_ICON_DECL = /(--tcv-icon-[\w-]+\s*:\s*url\("data:image\/svg\+xml,)([^"
 // remapped; the dark set is left as upstream ships it.
 const TCV_LIGHT_BLOCK = /\[data-theme="light"\]\s*\{[\s\S]*?\n\}/
 
+// tcv's stylesheet also styles the whole page — `body { user-select: none;
+// overflow: hidden; background-color: … }`, written for a page that is nothing but
+// the viewer. Once a generator has loaded it, it stays for the rest of the session,
+// so the gallery could no longer scroll (and no text anywhere could be selected).
+// The viewer's own chrome has its own user-select rules, so the page-level rule is
+// dropped here.
+const TCV_BODY_RULE = /^body\s*\{[^}]*\}/m
+
 function tcvIcons(): Plugin {
   return {
     name: 'tcv-icons',
@@ -136,6 +144,14 @@ function tcvIcons(): Plugin {
             return head + encodeSvg(recolorIcon(decodeURIComponent(payload))) + tail
           }))
 
+        const unscoped = themed.replace(TCV_BODY_RULE, '')
+        if (unscoped === themed) {
+          this.warn(
+            'three-cad-viewer\'s CSS no longer has the expected page-level `body` rule; '
+            + 'check it does not lock page scrolling — see TCV_BODY_RULE in vite.config.ts.',
+          )
+        }
+
         // A tcv upgrade that restructures the theme block would otherwise revert
         // the icons to stock blue with no other symptom.
         if (recolored === 0) {
@@ -146,9 +162,9 @@ function tcvIcons(): Plugin {
           )
         }
 
-        // Substitution stays within each original line, so there is nothing
-        // meaningful to map.
-        return { code: themed, map: null }
+        // The icon swaps stay within their lines and the body rule is a few
+        // dropped lines, so there is nothing meaningful to map.
+        return { code: unscoped, map: null }
       },
     },
   }
@@ -197,6 +213,17 @@ export default defineConfig({
     ui({
       ui: {
         colors: UI_COLORS,
+        // Help text is paragraphs, not a label: Nuxt UI's stock tooltip is one
+        // truncated line (`h-6`, `truncate`). Let it wrap, keep the paragraph
+        // breaks proto.py leaves in descriptions, and allow selecting the text.
+        // `content` merges with the stock classes; `truncate` in `text` isn't a
+        // class tailwind-merge knows to drop for `whitespace-*`, so those win with `!`.
+        tooltip: {
+          slots: {
+            content: 'h-auto max-w-xs items-start py-1.5 select-text',
+            text: 'whitespace-pre-line! text-wrap overflow-visible',
+          },
+        },
       },
     }),
     NuxtIconBundle({

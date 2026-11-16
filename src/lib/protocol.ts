@@ -39,6 +39,8 @@ export interface BuildResult {
   ok: boolean
   errors?: FieldError[]
   report?: PrintabilityReport
+  /** The geometry phase's `@memo` sub-part cache hits/misses (see proto.py). */
+  memo?: { hits: number, misses: number }
 }
 
 /**
@@ -93,7 +95,8 @@ export type WorkerResponse
   // terminal message (`build-result` or `build-cancelled`) so the page-thread
   // console can log it — the worker's own console is a separate inspector
   // context a user screenshot won't show.
-    | { type: 'build-timing', id: number, geometryMs?: number, tessellateMs?: number, analyzeMs?: number, totalMs: number }
+  // `cacheHits`/`cacheMisses` count the geometry phase's `@memo` lookups.
+    | { type: 'build-timing', id: number, geometryMs?: number, tessellateMs?: number, analyzeMs?: number, totalMs: number, cacheHits?: number, cacheMisses?: number }
     | { type: 'export-result', id: number, format: string, bytes?: Uint8Array, error?: string }
   // Reply to `reload-design` (and dev HMR of a design.py — then `id` is absent).
   // On success carries the fresh schema/presets; on failure `ok:false` + the
@@ -116,6 +119,9 @@ export type WorkerResponse
     | { type: 'reload' }
 
 // --- JSON Schema (the subset the form renderer walks) ---------------------- //
+/** A form parameter's value: what a field holds and what a preset or the URL carries. */
+export type ParamValue = number | string | boolean
+
 export interface JsonSchemaProperty {
   type?: string
   title?: string
@@ -132,8 +138,8 @@ export interface JsonSchemaProperty {
   // parameter types add a value here + a branch there. Set by proto.py's field
   // helpers — SliderField / ChoiceField / SelectField / CardsField, one per
   // widget. "cards" is a small set of mutually-exclusive options laid out as big
-  // inline tiles (not a dropdown).
-  widget?: 'slider' | 'shape' | 'select' | 'cards'
+  // inline tiles (not a dropdown); "toggle" is an on/off switch over a boolean.
+  widget?: 'slider' | 'shape' | 'select' | 'cards' | 'toggle'
   label?: string
   unit?: string
   // Nuxt UI size for the field's widgets (e.g. "lg" for the shape pickers, "xs"
@@ -166,6 +172,10 @@ export interface JsonSchemaProperty {
   // the viewer reframes on the result instead of holding the current camera (the
   // chain's line/spiral layout). Applying a preset recenters too, always.
   recenter?: boolean
+  // Fit-and-finish: a parameter that has to be reachable but doesn't belong in
+  // the main run of controls (fillets, tolerances). The form collects these into
+  // a closed "Advanced" disclosure at the end, in declaration order.
+  advanced?: boolean
   [key: string]: unknown
 }
 
@@ -190,7 +200,7 @@ export interface ShapeOption {
 export interface Preset {
   name: string
   description?: string
-  params: Record<string, number | string>
+  params: Record<string, ParamValue>
 }
 
 export interface JsonSchema {

@@ -3,9 +3,9 @@
 // vue-router `route.query` bridge and just calls these to translate. The path
 // (`/m/:slug`) selects the design; the query carries only its non-default params.
 
-import type { JsonSchema } from './protocol'
+import type { JsonSchema, ParamValue } from './protocol'
 
-type Params = Record<string, number | string>
+type Params = Record<string, ParamValue>
 
 /** vue-router query shape: a value can be a string, repeated (array), or null. */
 type RouteQuery = Record<string, string | (string | null)[] | null | undefined>
@@ -64,6 +64,10 @@ export function decodeParams(query: RouteQuery, schema: JsonSchema): Params {
       const n = Number(value)
       if (!Number.isNaN(n))
         out[name] = n
+    }
+    else if (prop.type === 'boolean') {
+      if (value === 'true' || value === 'false')
+        out[name] = value === 'true'
     }
     else {
       out[name] = value

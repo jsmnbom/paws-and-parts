@@ -39,16 +39,30 @@ wheels = [
 ]
 
 [[package]]
-name = "bd-warehouse"
-version = "0.3.0"
+name = "bd-materials"
+version = "0.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "threejs-materials" },
+    { name = "webcolors" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/11/34/913df28847b497acadb5c6fb07c459b4cc5a13fd6997ed4d5efbaa4bacb2/bd_materials-0.2.5.tar.gz", hash = "sha256:da08680efe34d582b72dde78d7f375705bf0f1258829bab83118ac0b24d88a11", size = 94645, upload-time = "2026-10-23T14:07:44.555Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/61/4f22974be46a3d16b11422db01422eddd020e52ee7ab42902add3f8c9c0a/bd_materials-0.2.5-py3-none-any.whl", hash = "sha256:a08fa367c460ed7bfedaf8bdf57c91d93ef87dd5e3b66dc5e4a6771668d168e0", size = 79126, upload-time = "2026-10-23T14:07:43.319Z" },
+]
+
+[[package]]
+name = "bd-warehouse"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "bd-materials" },
     { name = "build123d" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/28/e8fa9fcd867db480ae7e109476c73310a5ca1ff7f246466709ad84f4f830/bd_warehouse-0.3.0.tar.gz", hash = "sha256:38f339909772770f7d211d7d25dd3572bdfb83d09eb65dee6380dea3a09ea49e", size = 8046603, upload-time = "2026-07-12T18:31:28.714Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/7b/1a860283b544e39763d9b6357b39785ed1db9055756b3a6cec0bb67f084a/bd_warehouse-0.4.0.tar.gz", hash = "sha256:3c98f83b0b5c67fade67411b9775ae98a7fcffc714e231e825886f0c86778191", size = 22358664, upload-time = "2026-10-07T17:50:09.441Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/10/431fed58b4bccf7aed3f124442f2eeeecc3f83468eaa341aab9b31ff84e3/bd_warehouse-0.3.0-py3-none-any.whl", hash = "sha256:291c40f3ed04ac6dac2fbd7592eb0da3193a6aa93e3d3b741d915ca190dc99fc", size = 140511, upload-time = "2026-07-12T18:31:27.177Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/4b/2eadc5c20456b0ddff63c1b14444a7f2852ceb7956b578b521162a4e8149/bd_warehouse-0.4.0-py3-none-any.whl", hash = "sha256:2bb830513dc53a5095904d645a92466e629a50bd5493783544bdf3a7d5efc339", size = 179019, upload-time = "2026-10-07T17:50:07.634Z" },
 ]
 
 [[package]]
@@ -62,12 +76,14 @@ wheels = [
 
 [[package]]
 name = "build123d"
-version = "0.11.1"
+version = "0.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anytree" },
+    { name = "bd-materials" },
     { name = "cadquery-ocp-novtk" },
     { name = "ezdxf" },
+    { name = "fonttools" },
     { name = "ipython" },
     { name = "lib3mf", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'" },
     { name = "numpy" },
@@ -79,13 +95,28 @@ dependencies = [
     { name = "scipy" },
     { name = "svgpathtools" },
     { name = "sympy" },
+    { name = "threejs-materials" },
     { name = "trianglesolver" },
     { name = "typing-extensions" },
     { name = "webcolors" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/84/27/b7487242de480cd349baad8d1a3eca6a5eb65ebfb331cf0c5b408a832f96/build123d-0.11.1.tar.gz", hash = "sha256:9647c3fc7e1ef11d9c335787a54cf26e9bbc2191186342fe9755ec24a480033b", size = 20911070, upload-time = "2026-07-02T18:33:10.783Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/6c/47b531b579d5238e4627b5113375d8f7a7145a24b3447413be318422ee71/build123d-0.13.0.tar.gz", hash = "sha256:97c5577a777ff7219714b10f70f253c7109e84bb3ec621eea5d4597b4c7656b4", size = 22965578, upload-time = "2026-09-21T20:24:40.284Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/f2/c466dbd4cb3aa75a192ba39f1a49058f828fcc0eb6f9cf6936ed6078308b/build123d-0.11.1-py3-none-any.whl", hash = "sha256:4e95fa7ccbdc83e624313be492e7c4f5f0eb2ea1df36130eb718bb0c25a89e10", size = 368081, upload-time = "2026-07-02T18:33:08.787Z" },
+    { url = "https://files.pythonhosted.org/packages/16/a2/da58cdab8a6978376d66c909b06f4a1c9aafbd23163540741c75a51b675e/build123d-0.13.0-py3-none-any.whl", hash = "sha256:177f114e5f0514054189134346d386c7004048f8e58430b9b84b74a04fbc94fe", size = 387753, upload-time = "2026-09-21T20:24:37.877Z" },
+]
+
+[[package]]
+name = "build123d-utils-jas"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "build123d" },
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8d/b2/235f33e9a2f6e746cb8b858c2b200027db499449a9d147b8ef7a6157ea74/build123d_utils_jas-0.2.0.tar.gz", hash = "sha256:6b651f46ad22fd19f30d5f30edba2c33c4f9c73aedec04bd4603dbf1b8e4fd91", size = 20521, upload-time = "2026-10-19T10:50:14.474Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/f4/c6a34e9d6c329d47e4812c26952c1d6a1cb54ba0594ff0a7ffaa25ec38e8/build123d_utils_jas-0.2.0-py3-none-any.whl", hash = "sha256:30a70f75d36d1201c268d966c14322e9f5d144d2e2301df7069e8a41c92833a2", size = 23896, upload-time = "2026-10-19T10:50:12.398Z" },
 ]
 
 [[package]]
@@ -99,37 +130,37 @@ wheels = [
 
 [[package]]
 name = "cadquery-ocp-novtk"
-version = "7.9.3.1.1"
+version = "8.0.1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cadquery-ocp-proxy" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/80/dc46dac2ebb6ae6bcce27bc7f717438b99897199be25323cda559a76e0a1/cadquery_ocp_novtk-7.9.3.1.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:2287812f213af7020f8bbc69b07d6039e529f5e0e154c0192221aff3fdac6676", size = 62295929, upload-time = "2026-05-28T13:08:15.333Z" },
-    { url = "https://files.pythonhosted.org/packages/97/55/93f76eb2a1874b2d51c98e6cad1b55ae7562fc9b6eb36365e3b0597d25c4/cadquery_ocp_novtk-7.9.3.1.1-cp313-cp313-macosx_11_0_x86_64.whl", hash = "sha256:e2969d2129bf21067f44953117cc18f1426f5aacaed8bcc074228eb50f3179b2", size = 67126917, upload-time = "2026-05-28T13:08:18.75Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/bc/3eb58a3b7513309d665e0a65c00da93fc825dc930744cd8ab23626cd2e1f/cadquery_ocp_novtk-7.9.3.1.1-cp313-cp313-manylinux_2_31_aarch64.whl", hash = "sha256:d8f68b05c2917fb0f5ea569ed88c697d47cc57a7b293929d863b52c99ace9312", size = 61978120, upload-time = "2026-05-28T13:08:22.182Z" },
-    { url = "https://files.pythonhosted.org/packages/f3/31/82baf17406c0a13f2eb98c1d46d09a640795fc7d6b373a69bc5f44344db3/cadquery_ocp_novtk-7.9.3.1.1-cp313-cp313-manylinux_2_31_x86_64.whl", hash = "sha256:ffcd04d4efa087d3aa942360020265a1ac0e12407bd7bcfeb37e70b4d1ee72df", size = 67466562, upload-time = "2026-05-28T13:08:25.751Z" },
-    { url = "https://files.pythonhosted.org/packages/57/48/4595c22b0ae1b4759f209a13d21dadd229db6c374d9b0a95afa7ed0c4714/cadquery_ocp_novtk-7.9.3.1.1-cp313-cp313-win_amd64.whl", hash = "sha256:3390be6d8199a50b01ae0137a60f56d0cfecd8753dbee08532bbbeb8b7169682", size = 46364506, upload-time = "2026-05-28T13:08:29.174Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/b3/3b898e721d70d2781835a5e7721a0f01c60d7ac91684a5ffee6e1b8b210b/cadquery_ocp_novtk-8.0.1.1.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:78b9033a47d72049b290c18e2c4c80bffc56c055b52eb60f49aca76550a9ddc8", size = 63092379, upload-time = "2026-10-05T16:19:26.071Z" },
+    { url = "https://files.pythonhosted.org/packages/24/dc/cdb537c26b5eab1b4ae7ca7fc08072e112aa77c8c899d7f56491c2e9776c/cadquery_ocp_novtk-8.0.1.1.0-cp313-cp313-macosx_11_0_x86_64.whl", hash = "sha256:d0f3747b7e486f315793d4d4166daf5146ad6088beae8ddc950193d2513b1ca8", size = 67945939, upload-time = "2026-10-05T16:19:29.488Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/8f/bcd627f307f4eb90861aeb536b687b9133f28e999827123178e1c6577020/cadquery_ocp_novtk-8.0.1.1.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:3f47080e5e4381f0ad8bed14cd19fd16f006550abec441db54f7ec417ebb1ac0", size = 61496158, upload-time = "2026-10-05T16:19:33.074Z" },
+    { url = "https://files.pythonhosted.org/packages/92/2a/2c6847d6a1e73c6aeea20271709ac1aae24092b898ff3cf23f3b1587ca83/cadquery_ocp_novtk-8.0.1.1.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:65c56795870b1249a0ad9ef0814a38844be64bcdc2b86beaab01f9416edcc14b", size = 66809073, upload-time = "2026-10-05T16:19:36.669Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/e8/5ddcb4b0633eccd81bda22e9a30d5eaa668088fdcfa65bbd6bc9f501bb1f/cadquery_ocp_novtk-8.0.1.1.0-cp313-cp313-win_amd64.whl", hash = "sha256:7dec43cd08a4600d970ee60a358a4c4e0f88a64261ac38e5fe55a29704f18f81", size = 47750971, upload-time = "2026-10-05T16:19:39.861Z" },
 ]
 
 [[package]]
 name = "cadquery-ocp-proxy"
-version = "7.9.3.1.1"
+version = "8.0.1.1.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/c0/04e9363a99fee892de2776820e3dcf04f8825b6edc9580efe3416c9465a7/cadquery_ocp_proxy-7.9.3.1.1-py3-none-any.whl", hash = "sha256:ca4164ec4b54956d9fc3e68c67d555b5486cb963c2f71e18df005ba16b921c91", size = 3322, upload-time = "2026-05-28T13:08:49.092Z" },
+    { url = "https://files.pythonhosted.org/packages/13/5e/29c3d8c4b290dee82387468a33ac06c663518a167963cdb9ff48e6bbd8f9/cadquery_ocp_proxy-8.0.1.1.0-py3-none-any.whl", hash = "sha256:98c71bb60cfb651afe179b134ab88580fd75384fce0cc6d633f727002cd18abd", size = 3250, upload-time = "2026-10-05T16:23:45.717Z" },
 ]
 
 [[package]]
 name = "cadquery-ocp-stubs"
-version = "7.9.3.1.1"
+version = "8.0.1.1.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/f0/0cb52aa92e8c8e3b45c70e3a56958e85068e6a2bc60909eed0ed1613aafe/cadquery_ocp_stubs-7.9.3.1.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:2285b7c33e6fe1a7e09df58953a0dc9550c8cb13990dab4190da025ca40d2f0f", size = 2851543, upload-time = "2026-05-28T13:08:50.067Z" },
-    { url = "https://files.pythonhosted.org/packages/83/f6/bba5582cd3eb416adc404f70140f47c10c4628eb2081957834e2c444127f/cadquery_ocp_stubs-7.9.3.1.1-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:7e94ac49d21d2d0fa64b555bdbe986f8d57db5f37f333feb86fb11d2523aa71f", size = 2851545, upload-time = "2026-05-28T13:08:51.676Z" },
-    { url = "https://files.pythonhosted.org/packages/f0/e6/6ba73f9302f53cb008c487fae82b1198974f3e6f608febba161f56d4993e/cadquery_ocp_stubs-7.9.3.1.1-py3-none-manylinux_2_31_aarch64.whl", hash = "sha256:1e8e95091fbb6c8001cf258dd1e204e43754e39f186afba58fc8d2ce14f84198", size = 2851802, upload-time = "2026-05-28T13:08:53.317Z" },
-    { url = "https://files.pythonhosted.org/packages/1c/39/d0a4533ef1d776feea0cc04613438ddec1279ed0719f310cdf192f2e42b9/cadquery_ocp_stubs-7.9.3.1.1-py3-none-manylinux_2_31_x86_64.whl", hash = "sha256:5f31f5f8b04edb151612fc0a1a35bcb0491f47f06e160820149c3be37eb01575", size = 2851802, upload-time = "2026-05-28T13:08:54.852Z" },
-    { url = "https://files.pythonhosted.org/packages/6c/de/2a93a7cd47226bdd802674e8a040235ef1a1a4433bbf4d220e21253fe31e/cadquery_ocp_stubs-7.9.3.1.1-py3-none-win_amd64.whl", hash = "sha256:5ecba090df1ada12c558ff4a1b49c61d5155edc8cb3411067a785e3b43f4b359", size = 2899849, upload-time = "2026-05-28T13:08:56.172Z" },
+    { url = "https://files.pythonhosted.org/packages/49/ae/114c3f48e1456c294dfe93385c2ddfd60115a77422946fec7a5fe55e5c71/cadquery_ocp_stubs-8.0.1.1.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:fcb92e6e5118f1dfc7c85d4a0a1547c93d238546474e3bc0c7169e5d86e198d9", size = 2667836, upload-time = "2026-10-05T16:22:37.198Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/e5/bcf3d4dcf8ca25634d309b40524c4c4372aaf9bc49b7949a5f9b9913ef4f/cadquery_ocp_stubs-8.0.1.1.0-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:0366906c1303b1c19814b871a6aa3494a2df2aaf52af2742337cdd45e6a9ee66", size = 2667837, upload-time = "2026-10-05T16:22:38.747Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/5c/eabe2cf433d70459c6fc3a37497482b35a1715d9f1747a65ec3c7d664c6c/cadquery_ocp_stubs-8.0.1.1.0-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:d1b83dd23193646f4c23ad08e8f86b4fa731d4354c7dab5a80d8b0fea75c205b", size = 2668105, upload-time = "2026-10-05T16:22:40.354Z" },
+    { url = "https://files.pythonhosted.org/packages/46/7f/b91cd251ad52e3540b24f5f4536681c51647376a1700fd82cbbcd6f32d02/cadquery_ocp_stubs-8.0.1.1.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:e04f54e6f286b38422c5ab9240e3de9e5a484fc76b400a399c19df5b670581ed", size = 2668105, upload-time = "2026-10-05T16:22:41.992Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/31/1b34d57ad642477ea92ad750fe59d4b8444b02dce3296dc7a7e33f53f85a/cadquery_ocp_stubs-8.0.1.1.0-py3-none-win_amd64.whl", hash = "sha256:0b23659d9243b6b86313837e36f4d9623d341cdc9eec87ea94bf2028abf2040e", size = 2692972, upload-time = "2026-10-05T16:22:43.306Z" },
 ]
 
 [[package]]
@@ -625,21 +656,21 @@ wheels = [
 
 [[package]]
 name = "ocp-gordon"
-version = "0.2.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cadquery-ocp-proxy" },
     { name = "numpy" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/ed/3d8955df5d412bd6e711e7c0673d6420efe6ce3a106f0dbc50fc5cc82b3e/ocp_gordon-0.2.0.tar.gz", hash = "sha256:3ce1f1fb589e891534d0c1fd7553a518733336308837c4b5e5164d77df1cf5c9", size = 118840, upload-time = "2026-01-09T00:33:56.107Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/b2/66ed6601660648ad5bf84a571460cd57e9db4b28c6833c55e229211a418d/ocp_gordon-0.3.1.tar.gz", hash = "sha256:e55e695fd421e4dc10fe91636e7f2fa376ad81572faaf74e7bbed4b78c7918b7", size = 114168, upload-time = "2026-09-09T03:42:12.379Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/25/413bf35cd207142ca4a6e4d24d8006ee25e8fe225fbc5221bb91f8bc41f2/ocp_gordon-0.2.0-py3-none-any.whl", hash = "sha256:d7661a254990c7fe3be4e3bebf71bbdb22c0893ca441e95373f7507d56131fb1", size = 52834, upload-time = "2026-01-09T00:33:54.554Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/dc/ffc8307cd048f4f1e28d95cff6fe694af74f2bae771af6da272701d9646a/ocp_gordon-0.3.1-py3-none-any.whl", hash = "sha256:5df14c38032dcca582ba788e53f8d2e8b39a646a5ea786a0309e8494b3061a81", size = 52347, upload-time = "2026-09-09T03:42:11.083Z" },
 ]
 
 [[package]]
 name = "ocp-tessellate"
-version = "3.4.1"
+version = "3.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
@@ -647,9 +678,9 @@ dependencies = [
     { name = "numpy" },
     { name = "webcolors" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/26/93/5497c58730e5103a12a1e1678c95869067bb1bdfa361d878183ef4dfc15b/ocp_tessellate-3.4.1.tar.gz", hash = "sha256:63ff387d65b7a8d9a0a54968aba7420bfdb1d36f628b62889a981c5558f11b90", size = 76734, upload-time = "2026-07-15T12:59:23.817Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/81/2351429c263362f424a5960c71a0b07298df8471ae5923b219e40b550818/ocp_tessellate-3.4.2.tar.gz", hash = "sha256:812fbee49bcc9bed26712e0c06e6d4a7d3a664d2d8c7fb73183909e01899e106", size = 76838, upload-time = "2026-09-05T17:13:40.504Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/d3/dfa96118ddcdf22e94893cbef40912c8fad784eb1506d66760eedbe556db/ocp_tessellate-3.4.1-py3-none-any.whl", hash = "sha256:b61217c2af500e6ce38bb8d142a87a449a6b496a65b223539b3b5c5bb84e8097", size = 86739, upload-time = "2026-07-15T12:59:22.585Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/f5/d07cc8aec1ce477930fda90c981c356c9215f23b65a2108af2d8a8eb101d/ocp_tessellate-3.4.2-py3-none-any.whl", hash = "sha256:54586f640b4b88a70dc5013b1c427c23db6123101fed1a95074a39d2f3bd869e", size = 86985, upload-time = "2026-09-05T17:13:39.278Z" },
 ]
 
 [[package]]
@@ -679,15 +710,15 @@ wheels = [
 
 [[package]]
 name = "ocpsvg"
-version = "0.6.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cadquery-ocp-proxy" },
     { name = "svgelements" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/48/f121f459dc6e184ca2ee99b8fba0a2f51b1ef710d829eafb43d9acd1100d/ocpsvg-0.6.0.tar.gz", hash = "sha256:f08da4347cc90ecd3565395e9bda5746d46ab8aafd6a2681bb03a9c321b54039", size = 54342, upload-time = "2026-01-08T12:31:35.206Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/77/93/6731a317aca67604914e69f4d92d544c5637c89d8fd54e5dde9ddbc93561/ocpsvg-0.7.0.tar.gz", hash = "sha256:e8a03495e873943398df61e1cd02bd0d6f0f206665a2c9f86430b75bd2ecc152", size = 54507, upload-time = "2026-09-12T09:15:23.124Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/d7/27d2c9d5a2645fdda9e502a2a1a1cb5d4c9d137223ef76a43296eb7c152b/ocpsvg-0.6.0-py3-none-any.whl", hash = "sha256:5cfc6deb2f602ded845596409e41fe8f5e1b389e14e8cc727db0955f0e88de7b", size = 20847, upload-time = "2026-01-08T12:31:33.804Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/a5/4143c35ee979c5decc985ba4621f50fae1ec6977adf8ab0429c2a74be668/ocpsvg-0.7.0-py3-none-any.whl", hash = "sha256:a476bb48b6b2e2d9f1f3a6356fde579373d681618b39a6ad9c99a808a0113997", size = 20946, upload-time = "2026-09-12T09:15:21.842Z" },
 ]
 
 [[package]]
@@ -752,6 +783,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "bd-warehouse" },
     { name = "build123d" },
+    { name = "build123d-utils-jas" },
     { name = "ocp-tessellate" },
     { name = "orca123d" },
     { name = "pydantic" },
@@ -768,11 +800,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bd-warehouse", specifier = ">=0.3.0" },
-    { name = "build123d", specifier = "==0.11.1" },
-    { name = "cadquery-ocp-stubs", marker = "extra == 'dev'", specifier = ">=7.9.3.1.1" },
+    { name = "bd-warehouse", specifier = ">=0.4.0" },
+    { name = "build123d", specifier = "==0.13.0" },
+    { name = "build123d-utils-jas", specifier = "==0.2.0" },
+    { name = "cadquery-ocp-stubs", marker = "extra == 'dev'", specifier = ">=8.0.1.1.0,<8.1" },
     { name = "ipykernel", marker = "extra == 'dev'" },
-    { name = "ocp-tessellate", specifier = "==3.4.1" },
+    { name = "ocp-tessellate", specifier = "==3.4.2" },
     { name = "ocp-vscode", marker = "extra == 'dev'", specifier = "==4.0.0" },
     { name = "orca123d", specifier = "==0.1.2" },
     { name = "pip", marker = "extra == 'dev'" },
@@ -1250,17 +1283,18 @@ wheels = [
 
 [[package]]
 name = "threejs-materials"
-version = "1.2.1"
+version = "1.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "numpy" },
     { name = "pillow" },
     { name = "platformdirs" },
     { name = "pygltflib" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/02/0c/0f1e66bc20d92ecb80f55ebf543a59130bc85697e4e824d31216879af7e8/threejs_materials-1.2.1.tar.gz", hash = "sha256:1679d24a955046e2f40cc307ef063a4d63ed12bbaef555ce0ebdcd2ad2c60617", size = 86266016, upload-time = "2026-07-15T13:00:41.934Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/17/53/ee897f253ea6091810c7df2c0ef809d7ac2487551ea6639f87d59435d588/threejs_materials-1.2.5.tar.gz", hash = "sha256:20c515709d26accb043a2ea28801ef7d9d7ad0cad7cbba99cb3004bd22dc5c40", size = 89863794, upload-time = "2026-10-15T12:19:51.608Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/11/fc/b2d11a2ace2b2a8feebec4e2f9064d69cdcb8727561d2da0086819c84cb2/threejs_materials-1.2.1-py3-none-any.whl", hash = "sha256:6eac2a57a01f2087255a77a90c67bc3d78b56b73a949475ecd75f0c7a1d932b5", size = 86200771, upload-time = "2026-07-15T13:00:15.108Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/ea/d2980e85afcc62e2a9c032c012009e3d50ec15f9b66ec1097463e65aa55e/threejs_materials-1.2.5-py3-none-any.whl", hash = "sha256:e622264388045fa35612b514ddaedecb213831c98aa0b140a101bbf3fdd527a6", size = 89793030, upload-time = "2026-10-15T12:19:24.219Z" },
 ]
 
 [[package]]

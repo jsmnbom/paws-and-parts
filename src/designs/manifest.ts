@@ -5,7 +5,8 @@
 // Each `src/designs/<slug>/design.py` is bundled as raw source (sent to the
 // worker via `reload-design`) and its display metadata is scraped from the
 // module docstring (first line = name, rest = description) plus the `__author__`
-// / `__urls__` / `__blank__` dunders — co-located with the design so they can't
+// / `__urls__` / `__blank__` / `__experimental__` dunders — co-located with the
+// design so they can't
 // drift, and cheap to read without booting Python. A design never writes its own
 // repo link: `sourceUrl` here points each one at its own `design.py` at the
 // build's commit, so `__urls__` is for *outbound* links only (Printables, shop…).
@@ -32,6 +33,8 @@ export interface DesignMeta {
   thumb?: string
   /** The "start from scratch" starter — rendered distinctly, opens on the Code tab. */
   blank: boolean
+  /** Still being worked out: listed, but badged — its geometry and parameters may still move. */
+  experimental: boolean
   /** This design's own `design.py` on the forge, pinned to the build's commit. */
   sourceUrl: string
   /** Footer links: the design's `__urls__`, then the auto source link. */
@@ -165,6 +168,7 @@ function toMeta(path: string, source: string): DesignMeta {
     source,
     thumb: thumbs[`./${slug}/thumb.png`],
     blank: pyFlag(source, '__blank__'),
+    experimental: pyFlag(source, '__experimental__'),
     sourceUrl,
     links: [
       ...pyLinks(source),
@@ -173,10 +177,16 @@ function toMeta(path: string, source: string): DesignMeta {
   }
 }
 
-/** All designs, real ones first and any blank starter(s) last (gallery order). */
+/**
+ * All designs, in gallery order: finished ones first, then the `__experimental__`
+ * ones, then any blank starter(s) — alphabetical within each band.
+ */
 export const designs: DesignMeta[] = Object.entries(sources)
   .map(([path, source]) => toMeta(path, source))
-  .sort((a, b) => Number(a.blank) - Number(b.blank) || a.slug.localeCompare(b.slug))
+  .sort((a, b) =>
+    Number(a.blank) - Number(b.blank)
+    || Number(a.experimental) - Number(b.experimental)
+    || a.slug.localeCompare(b.slug))
 
 const bySlug = new Map(designs.map(d => [d.slug, d]))
 

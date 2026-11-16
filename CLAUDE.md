@@ -46,6 +46,9 @@ uv run python -c "import sys; sys.path.insert(0,'src/python'); \
 
 ## The single-source-of-truth contract
 
+To add a design, follow `.claude/skills/add-design/SKILL.md` (the `add-design`
+skill): it is one new `src/designs/<slug>/design.py`, nothing else to register.
+
 The seam is defined in `src/python/proto.py` (the design-authoring **SDK**) and
 implemented by each `src/designs/<slug>/design.py` (chain is the reference one).
 `proto.py` is the one place that states the whole contract — read its module
@@ -72,7 +75,11 @@ A design module exposes exactly one **`Design` subclass**:
   starts.
 - Gallery metadata is the module **docstring** (first line = name, rest =
   description) plus optional `__author__`, `__urls__` (`{label: url}` → per-design
-  footer links, icons auto-derived from the URL host) and `__blank__ = True`.
+  footer links, icons auto-derived from the URL host), `__blank__ = True` and
+  `__experimental__ = True` — the latter marking a design that isn't finished
+  (geometry/params still moving, not print-verified): it gets an "Experimental"
+  badge on its gallery card *and* in the generator header, and sorts after the
+  finished designs in the gallery.
   `__urls__` is for *outbound* links only: `manifest.ts` appends a "Source" link
   pointing at that design's own `design.py` at the build's commit (`__GIT_HASH__`,
   `HEAD` in a dev build), so no design hardcodes a repo URL.
@@ -97,22 +104,35 @@ Keep the contract clean; don't leak chain-specifics into
   about violations by attempting a build and rendering the returned
   `ValidationError` inline. There is no separate client-side validation.
 - A parameter is declared with one of `proto.py`'s field helpers — `SliderField` /
-  `ChoiceField` / `SelectField` / `CardsField` — which wrap pydantic's `Field`:
-  they take the validation bounds *and* the widget hints, stamping a `widget`
-  discriminator (`"slider"`/`"shape"`/`"select"`/`"cards"`) into
+  `ChoiceField` / `SelectField` / `CardsField` / `ToggleField` — which wrap
+  pydantic's `Field`: they take the validation bounds *and* the widget hints,
+  stamping a `widget` discriminator
+  (`"slider"`/`"shape"`/`"select"`/`"cards"`/`"toggle"`) into
   `json_schema_extra` that the form switches on. **The helper you call is what
   picks the widget**; `Option(value, label, description, wire=...)` is the shared
   option type for `SelectField`/`CardsField` (`wire` is an optional preview both
   render). A field's **attribute docstring** is its description — `proto.BaseModel`
   sets `use_attribute_docstrings=True`, which is why `reload_design` must give the
   design a real module identity (below). Add a new parameter type by adding a
-  helper there + a branch in `ParamForm.vue`. All four also take
+  helper there + a branch in `ParamField.vue`. All four also take
   `recenter=True` (the chain's `layout`): the viewer normally holds the user's
   camera across rebuilds, but a flagged field — like applying a preset, which
-  always does it — reframes on the new geometry instead (`Viewer.resetView()`). "How to show the form" stays
-  co-located with the design. The schema→component mapping is in
-  `src/components/ParamForm.vue`; `src/lib/resolveSchema.ts` flattens pydantic's
-  `$ref`/`$defs` first.
+  always does it — reframes on the new geometry instead (`Viewer.resetView()`);
+  and `advanced=True` (the knob's fillets/tolerances), which files the field under
+  a closed "Advanced" disclosure at the end of the form instead of the main run of
+  controls — a display hint, not a parameter, so nothing extra reaches the params
+  object, the URL or the export filename. "How to show the form" stays
+  co-located with the design. Schema→field resolution is in
+  `src/components/ParamForm.vue` (grouping, `show_if`, dependent bounds) and one
+  field is drawn by `ParamField.vue`, over the `Field` union in
+  `src/lib/formFields.ts`; `src/lib/resolveSchema.ts` flattens pydantic's
+  `$ref`/`$defs` first. Help text is written hard-wrapped and **unwrapped** by
+  `proto` on the way out (`_unwrap`: paragraph breaks and list items kept — field
+  descriptions via `BaseModel.model_json_schema`, plus `Choice`/`Option`/preset
+  descriptions), so the form shows it `whitespace-pre-line` in an info popover
+  (hover + click on desktop, tap elsewhere). A changed field shows a revert-to-
+  default button (`Field.default`); "Reset all" sits in the preset strip and the
+  compact header menu.
 - The printability report is a flat list of findings built with `proto.Report`
   (`r.add(label, value, ...)`, auto-rolled `overall_status`/`summary`; `value` is
   numeric). Its `to_dict()` is mirrored by `PrintabilityReport` in `protocol.ts` and
@@ -122,6 +142,16 @@ Keep the contract clean; don't leak chain-specifics into
   design can reuse), alongside the printing constants `FIRST_LAYER_HEIGHT` /
   `MAX_OVERHANG_DEG`; design-specific choices (which face is the footprint, brim
   messaging, the chain's link lean) stay in the design's `analyze`.
+- **Speed, opt-in per design.** `Design.FAST_PATCH = True` (chain, infinity-cube)
+  runs build + analyze under `build123d_utils_jas.apply_fast_patch()`, scoped per
+  call by `proto.fast_patch(enabled)` so other designs keep stock build123d. The
+  patch makes `copy`/`moved` share the TopoDS and `bounding_box()` default to the
+  **coarse** box — pass `optimal=True` wherever a box feeds a threshold
+  (`check_floating` does). Separately, `@proto.memo` caches a pure sub-part builder
+  `f(params, *args)` across builds, keyed on the fields it *actually read* (a
+  recording proxy of `params`; properties/methods are followed through, but
+  `model_dump()`/`vars()` defeat it) and handing out copies. `reload_design` calls
+  `clear_memo()`; per-build hits/misses reach the `build-timing` console log.
   `Design.analyze`'s default is an empty report — a design opts into checks by
   calling the methods.
 - `proto.py`'s `Choice` is a lightweight enum-like whose members are static
@@ -161,7 +191,8 @@ touching cross-boundary code.
   build phases `build_geometry` (validate → `ActiveDesign(params)`, staged in
   `_staged`) / `build_tessellate` / `build_analyze` / `build_abandon`,
   `export_bytes` (STEP via build123d; 3MF OrcaSlicer project via
-  orca123d), and `reload_design` (gallery select / dev hot-reload; returns
+  orca123d; reuses the last *finished* build, `_last_built`, when the requested
+  params equal it, else builds), and `reload_design` (gallery select / dev hot-reload; returns
   `{ok, schema?, presets?, error?}`, surfacing a bad edit's traceback instead of
   throwing). It loads the source as a **real `design` module** (registered in
   `sys.modules`, source in `linecache`) rather than exec'ing it into a dict: that
@@ -169,15 +200,17 @@ touching cross-boundary code.
   field's attribute docstring back out of the source. A failed load restores the
   previous module and leaves `ActiveDesign` bound.
 - `src/composables/useDesignWorker.ts` — worker lifecycle + reactive state (schema,
-  shapes, `buildStage`/`buildPending`, fieldErrors, report, `reloadError`,
-  `reloading`), debounced `build` and `reloadDesign`, export. `build`'s debounce is
+  shapes, `buildStage`/`buildPending`, fieldErrors, `buildError` (the form-level
+  message), `shapesStale` (latest build failed, viewer shows an older result),
+  report, `reloadError`, `reloading`), debounced `build` and `reloadDesign`, export. `build`'s debounce is
   asymmetric: a change following a lull (> `BUILD_IDLE_GAP_MS`) is a deliberate act
   and dispatches immediately, one on the heels of another is part of a burst and
   only its settling value is built (`BUILD_TRAILING_MS`). `buildStage` is what the
   worker is doing right now; `BuildProgress.vue` draws it as a hairline bar over
   the viewer (hidden for the first 200 ms, so quick rebuilds pass unremarked).
 - `src/components/` — `BootProgress`, `BuildProgress` (the per-build bar, distinct
-  from the boot bar), `ParamForm`, `Viewer` (three-cad-viewer
+  from the boot bar), `ParamForm` (+ `ParamField`, one control), `Viewer`
+  (three-cad-viewer
   wrapper), `PrintabilityPanel`, `ShapeSelect`, `ShapePreview`, `AppContent` (the
   form + viewer body), `CodeEditor` (lazy Monaco; loads only when the source view is
   first opened, so Monaco never touches the main bundle). The source view is
@@ -187,6 +220,16 @@ touching cross-boundary code.
   `CodeEditor` doesn't emit and `AppContent` doesn't call `reloadDesign`. With no
   authoring path, `BLANK` designs are filtered out of the gallery
   (`src/views/Gallery.vue`) while still reachable at `/m/<slug>`.
+- Failures are loud: a build error is an alert at the *top* of `ParamForm`, a
+  toast (`AppContent`, one per distinct message; also for "Analysis failed" and
+  export failures) and, while `shapesStale`, a banner over the viewer whose "Show
+  error" scrolls the form to it.
+- `localStorage` keys: `lab-params:<slug>` (the last non-default params per design,
+  in the URL's encoding; seeded as defaults → stored → URL query, cleared by
+  "Reset all"), `lab-export-format`, `lab-layout` (pane sizes).
+- `vite.config.ts`'s `tcvIcons()` also strips three-cad-viewer's page-level
+  `body { overflow: hidden; user-select: none }` rule, which otherwise stays loaded
+  after visiting a generator and stops the gallery scrolling.
 
 Full regeneration on every parameter change (no incremental updates) — each
 change re-runs `ActiveDesign(params)` and re-tessellates the whole design. First
@@ -218,11 +261,21 @@ Coupled invariants to keep in sync by hand:
 - The worker's `loadPackage([...])` list must cover the built-in deps the pinned
   wheels need (they're installed `deps=False`); `gen:wheels` prints the required
   built-in roots.
+- `build123d-utils-jas` (the fast patch, `printing` fastener helpers) is pure
+  Python; it imports scipy at load, which the mock block already stubs.
+- `typing-extensions`: build123d 0.13 needs ≥ 4.16 (`typing_extensions.sentinel`)
+  but every Pyodide 314.x ships 4.15 as a built-in (a pydantic dep), so the mock
+  block `micropip.uninstall`s the built-in and `_WHEEL_URLS` carries the PyPI
+  wheel. Drop that once Pyodide's own is new enough.
+- The Pyodide built-ins also bound pure-Python pins: `gen:wheels` fails when a
+  wheel requires a newer built-in than this Pyodide has (orca123d 0.1.x needs
+  numpy ≥ 2.4.6, which is why Pyodide is on 314.0.7, not 314.0.2).
 - `pyproject.toml` deps mirror the browser pins so native authoring/type-checking
   hits the same API surface. `.venv` is not what runs in the browser.
 - The `# === MOCKS ===` block in `install.py` stubs out browser-unusable/heavy
-  deps (IPython, ezdxf, scipy/sklearn/sympy, lib3mf) that build123d imports at
-  load but this app's code paths don't exercise. `gen:wheels` reads this block to
+  deps (IPython, ezdxf, scipy/sklearn/sympy, lib3mf, threejs-materials) that
+  build123d imports at load but this app's code paths don't exercise (keep
+  `MOCKS` in `gen-pyodide-wheels.mjs` in step). `gen:wheels` reads this block to
   resolve requirements, so keep the markers intact.
 
 ## Linting / type-checking

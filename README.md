@@ -12,10 +12,10 @@ engine underneath it.
 | ------------------ | ------------------------------------------------- |
 | App framework      | Vue 3 + Vite (plain, client-side only)            |
 | UI components      | Nuxt UI (standalone Vue mode) + Tailwind CSS      |
-| Python runtime     | Pyodide **v314.0.2**, in a web worker               |
-| CAD kernel         | OCP.wasm (OpenCascade compiled to WebAssembly)    |
-| CAD library        | build123d **0.11.1**                              |
-| Tessellation       | ocp-tessellate (via ocp_vscode **3.1.2**)         |
+| Python runtime     | Pyodide **v314.0.7**, in a web worker               |
+| CAD kernel         | OCP.wasm **8.0.1.1** (OpenCascade 8 compiled to WebAssembly) |
+| CAD library        | build123d **0.13.0** (+ build123d-utils-jas **0.2.0**) |
+| Tessellation       | ocp-tessellate **3.4.2**                          |
 | 3D viewer          | three-cad-viewer **5.0.0** (bundles three **0.184.0**) |
 | Parameter modeling | pydantic                                          |
 

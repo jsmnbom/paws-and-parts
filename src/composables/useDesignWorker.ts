@@ -9,7 +9,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from '../lib/protocol'
-import { inject, onScopeDispose, ref, shallowRef } from 'vue'
+import { computed, inject, onScopeDispose, ref, shallowRef } from 'vue'
 import { resolveSchema } from '../lib/resolveSchema'
 
 /**
@@ -59,6 +59,12 @@ export function useDesignWorker() {
   // window and the worker's queue both read as "busy", not as idle.
   const buildPending = ref(false)
   const fieldErrors = ref<FieldError[]>([])
+  // A failure that belongs to no one field — a geometry error, a cross-field
+  // rule — as one message, or null. Field-level errors sit next to their field.
+  const buildError = computed(() => fieldErrors.value.find(e => e.loc.length === 0)?.msg ?? null)
+  // The viewer still shows a previous build's result because the latest one
+  // failed: true from a failed build until the next successful frame arrives.
+  const shapesStale = ref(false)
   const report = ref<PrintabilityReport | null>(null)
   // The active design's source is exec'd in the worker; a compile/exec traceback
   // (from a bad Code-tab edit) lands here for the editor to surface inline.
@@ -87,6 +93,8 @@ export function useDesignWorker() {
       buildStage,
       buildPending,
       fieldErrors,
+      buildError,
+      shapesStale,
       report,
       reloadError,
       reloading,
@@ -182,6 +190,7 @@ export function useDesignWorker() {
         try {
           shapes.value = JSON.parse(msg.data) as Shapes
           shownBuildId = msg.id
+          shapesStale.value = false
         }
         catch (err) {
           console.error('Failed to parse shapes', err)
@@ -195,6 +204,8 @@ export function useDesignWorker() {
         if (msg.id === latestBuildId) {
           fieldErrors.value = msg.ok ? [] : (msg.errors ?? [])
           report.value = msg.report ?? null
+          // Nothing to be stale about before the first frame.
+          shapesStale.value = !msg.ok && shapes.value !== null
           buildStage.value = null
           // A change that landed while this build ran is still waiting on its
           // debounce, so the form isn't settled yet even though a result arrived.
@@ -205,7 +216,10 @@ export function useDesignWorker() {
         log(
           `build ${msg.id}: geometry ${fmtMs(msg.geometryMs)}, `
           + `tessellate ${fmtMs(msg.tessellateMs)}, analyze ${fmtMs(msg.analyzeMs)}, `
-          + `total ${fmtMs(msg.totalMs)}`,
+          + `total ${fmtMs(msg.totalMs)}`
+          + (msg.cacheHits || msg.cacheMisses
+            ? `, sub-part cache ${msg.cacheHits ?? 0} hit / ${msg.cacheMisses ?? 0} miss`
+            : ''),
         )
         break
       case 'build-cancelled':
@@ -248,6 +262,9 @@ export function useDesignWorker() {
           // renderer reads (see resolveSchema). Updating `schema` drives the
           // active view to (re)seed params, preserving existing values.
           reloadError.value = null
+          // The previous design's build state says nothing about this one.
+          fieldErrors.value = []
+          shapesStale.value = false
           schema.value = msg.schema ? resolveSchema(msg.schema) : null
           presets.value = msg.presets ?? []
           presetLabel.value = msg.presetLabel ?? 'Preset'
@@ -360,6 +377,8 @@ export function useDesignWorker() {
     buildStage,
     buildPending,
     fieldErrors,
+    buildError,
+    shapesStale,
     report,
     reloadError,
     reloading,

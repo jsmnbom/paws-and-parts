@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { DesignWorker } from '../composables/useDesignWorker'
-import type { JsonSchema, Preset } from '../lib/protocol'
+import type { JsonSchema, ParamValue, Preset } from '../lib/protocol'
+import { useToast } from '@nuxt/ui/composables'
 import { onKeyStroke, useDebounceFn, useLocalStorage, useMediaQuery } from '@vueuse/core'
-import { computed, defineAsyncComponent, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onScopeDispose, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDesign } from '../designs/manifest'
 import { decodeParams, encodeParams, exportFilename } from '../lib/paramsUrl'
@@ -33,6 +34,8 @@ const {
   buildStage,
   buildPending,
   fieldErrors,
+  buildError,
+  shapesStale,
   report,
   reloadError,
   reloading,
@@ -40,10 +43,12 @@ const {
   exportModel,
 } = props.worker
 
+const toast = useToast()
+
 const route = useRoute()
 const router = useRouter()
 
-const params = ref<Record<string, number | string>>({})
+const params = ref<Record<string, ParamValue>>({})
 const exporting = ref<string | null>(null)
 
 // Below `lg` the two panes stack (viewer over form) instead of sitting side by side,
@@ -60,6 +65,9 @@ const viewerRef = ref<{
   captureScreenshot: () => Promise<string | null>
   resetView: () => void
 } | null>(null)
+
+// Handle on the form, so the viewer's "Build failed" banner can scroll to the error.
+const paramFormRef = ref<{ revealErrors: () => void } | null>(null)
 
 // The source view is a layer over the form, not a mode you switch into. Monaco is
 // mounted on first open and then kept alive (hidden with v-show), so reopening is
@@ -86,6 +94,9 @@ const source = getDesign(props.slug)?.source ?? ''
 const designLinks = getDesign(props.slug)?.links ?? []
 const sourceUrl = getDesign(props.slug)?.sourceUrl
 
+// `__experimental__` designs carry their gallery badge into the header (see manifest.ts).
+const experimental = getDesign(props.slug)?.experimental ?? false
+
 // Split-button: the primary action remembers the last format the user picked.
 const exportFormat = useLocalStorage<'3MF' | 'STEP'>('lab-export-format', '3MF')
 const exportItems = computed(() =>
@@ -105,10 +116,10 @@ const exportItems = computed(() =>
   ]],
 )
 
-function defaultsFor(s: JsonSchema): Record<string, number | string> {
-  const defaults: Record<string, number | string> = {}
+function defaultsFor(s: JsonSchema): Record<string, ParamValue> {
+  const defaults: Record<string, ParamValue> = {}
   for (const [name, prop] of Object.entries(s.properties)) {
-    defaults[name] = (prop.default as number | string) ?? prop.sliderMin ?? prop.minimum ?? 0
+    defaults[name] = (prop.default as ParamValue) ?? prop.sliderMin ?? prop.minimum ?? 0
   }
   return defaults
 }
@@ -132,7 +143,7 @@ const presetFields = computed(() =>
 )
 
 /** What the form would hold if `p` were applied: defaults with the preset over them. */
-function presetTarget(p: Preset): Record<string, number | string> {
+function presetTarget(p: Preset): Record<string, ParamValue> {
   return { ...defaultsFor(schema.value!), ...p.params }
 }
 
@@ -185,37 +196,94 @@ const presetGroupLabel = computed(() => {
   return `${presetLabel.value} · ${activePreset.value}${presetEdited.value ? ', edited' : ''}`
 })
 
-// Seed the form whenever the schema arrives or changes. On the first load, URL
-// query params layer over the defaults so a shared link boots into its exact
-// configuration. On an in-place schema change (a Code-tab edit that alters
-// Parameters), current values are *preserved* for fields that still exist — a
-// keystroke must not reset the form — with defaults filling any newly-added
-// field. Seeding kicks off a build via the params watcher below.
+// The last parameters used with this design, so coming back to it (from the
+// gallery, or a bare `/m/<slug>`) resumes where it was left. Stored the way the
+// URL carries them — only the values that differ from the defaults, as strings —
+// and read back through `decodeParams`, which already drops fields the design no
+// longer has and values that don't parse.
+const storedParams = useLocalStorage<Record<string, string>>(`lab-params:${props.slug}`, {})
+
+// Seed the form whenever the schema arrives or changes. On the first load, the
+// remembered params and then the URL query layer over the defaults — a shared
+// link still boots into its exact configuration. On an in-place schema change (a
+// Code-tab edit that alters Parameters), current values are *preserved* for
+// fields that still exist — a keystroke must not reset the form — with defaults
+// filling any newly-added field. Seeding kicks off a build via the params watcher
+// below.
 watch(schema, (s) => {
   if (!s)
     return
   const defaults = defaultsFor(s)
+  const stored = decodeParams(storedParams.value, s)
   const urlParams = decodeParams(route.query, s)
-  const kept: Record<string, number | string> = {}
+  const kept: Record<string, ParamValue> = {}
   for (const name of Object.keys(s.properties)) {
     if (params.value[name] !== undefined)
       kept[name] = params.value[name]
   }
-  params.value = { ...defaults, ...urlParams, ...kept }
+  params.value = { ...defaults, ...stored, ...urlParams, ...kept }
   // Light whichever preset these values are, so a shared link (or an untouched
   // form) shows what it's built from rather than a blank strip.
   activePreset.value = detectPreset()
 }, { immediate: true })
 
 // Mirror the current params into the URL query (debounced), carrying only values
-// that differ from the defaults so shared links stay short. The path (the design
-// slug) is owned by the router; we only rewrite the query.
-const writeUrl = useDebounceFn((p: Record<string, number | string>) => {
+// that differ from the defaults so shared links stay short, and remember the same
+// for next time. The path (the design slug) is owned by the router; we only
+// rewrite the query.
+const writeUrl = useDebounceFn((p: Record<string, ParamValue>) => {
   if (!schema.value)
     return
   const query = encodeParams(p, schema.value)
+  storedParams.value = query
   router.replace({ name: 'generator', params: { slug: props.slug }, query })
 }, 200)
+
+// Anything differs from the schema defaults — the same test the URL encoding makes.
+const changedFromDefaults = computed(() =>
+  !!schema.value && Object.keys(encodeParams(params.value, schema.value)).length > 0,
+)
+
+/** Back to the design's defaults, everything included — and forget the stored params. */
+function resetAll() {
+  if (!schema.value)
+    return
+  params.value = defaultsFor(schema.value)
+  storedParams.value = {}
+  activePreset.value = detectPreset()
+  viewerRef.value?.resetView()
+}
+
+// --- Failures, made hard to miss. ------------------------------------------ //
+//
+// A failed build leaves the previous result in the viewer, so besides the alert
+// at the top of the form (and the banner over the viewer, see `shapesStale`) it
+// raises a toast. One per distinct message: the same failure re-run by the next
+// slider tick doesn't stack up copies, and the toast goes once the error does.
+function useErrorToast(message: () => string | null, title: string) {
+  let shown: { message: string, id: string | number } | null = null
+  watch(message, (msg) => {
+    if (msg === shown?.message)
+      return
+    if (shown)
+      toast.remove(shown.id)
+    shown = msg
+      ? { message: msg, id: toast.add({ color: 'error', icon: 'i-lucide-triangle-alert', title, description: msg }).id }
+      : null
+  }, { immediate: true })
+  // The toaster outlives this view; don't leave a stale failure behind on it.
+  onScopeDispose(() => {
+    if (shown)
+      toast.remove(shown.id)
+  })
+}
+useErrorToast(() => buildError.value, 'Build failed')
+// The analysis failing on its own (the geometry is fine and on screen) comes back
+// as an error report with no findings — `Report.error` in proto.py.
+useErrorToast(
+  () => report.value?.overall_status === 'error' && !report.value.items.length ? report.value.summary : null,
+  'Analysis failed',
+)
 
 // Every param change (initial seed included) requests a debounced, latest-wins
 // build and syncs the URL.
@@ -279,6 +347,12 @@ async function downloadExport(format: 'STEP' | '3MF') {
   }
   catch (err) {
     console.error('Export failed', err)
+    toast.add({
+      color: 'error',
+      icon: 'i-lucide-triangle-alert',
+      title: `${format} export failed`,
+      description: err instanceof Error ? err.message : String(err),
+    })
   }
   finally {
     exporting.value = null
@@ -299,9 +373,12 @@ async function downloadExport(format: 'STEP' | '3MF') {
       class="shrink-0"
       compact
       :design-name="designName"
+      :experimental="experimental"
       :has-shapes="!!shapes"
+      :can-reset="changedFromDefaults"
       @screenshot="saveScreenshot"
       @open-code="openCode"
+      @reset="resetAll"
     />
 
     <UDashboardGroup
@@ -322,6 +399,7 @@ async function downloadExport(format: 'STEP' | '3MF') {
         <GeneratorHeader
           v-if="isDesktop"
           :design-name="designName"
+          :experimental="experimental"
           :has-shapes="!!shapes"
           @screenshot="saveScreenshot"
           @open-code="openCode"
@@ -361,15 +439,27 @@ async function downloadExport(format: 'STEP' | '3MF') {
                     <span class="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
                       {{ presetLabel }} preset
                     </span>
-                    <UButton
-                      v-if="presetEdited && activePreset"
-                      size="xs"
-                      variant="link"
-                      color="primary"
-                      class="p-0"
-                      :label="`Reset to ${activePreset}`"
-                      @click="applyPreset(presets.find((p) => p.name === activePreset)!)"
-                    />
+                    <div class="flex items-baseline gap-3">
+                      <UButton
+                        v-if="presetEdited && activePreset"
+                        size="xs"
+                        variant="link"
+                        color="primary"
+                        class="p-0"
+                        :label="`Reset to ${activePreset}`"
+                        @click="applyPreset(presets.find((p) => p.name === activePreset)!)"
+                      />
+                      <UButton
+                        v-if="changedFromDefaults"
+                        size="xs"
+                        variant="link"
+                        color="neutral"
+                        class="p-0"
+                        label="Reset all"
+                        title="Every parameter back to its default"
+                        @click="resetAll"
+                      />
+                    </div>
                   </div>
                   <div class="mt-2 flex flex-wrap gap-1.5">
                     <UTooltip
@@ -394,7 +484,21 @@ async function downloadExport(format: 'STEP' | '3MF') {
                   </p>
                 </div>
 
+                <div v-else-if="changedFromDefaults" class="-mt-2 mb-3 flex justify-end">
+                  <!-- No preset strip to sit in: the reset gets a row of its own. -->
+                  <UButton
+                    size="xs"
+                    variant="link"
+                    color="neutral"
+                    class="p-0"
+                    label="Reset all"
+                    title="Every parameter back to its default"
+                    @click="resetAll"
+                  />
+                </div>
+
                 <ParamForm
+                  ref="paramFormRef"
                   v-model="params"
                   :schema="schema"
                   :field-errors="fieldErrors"
@@ -526,6 +630,8 @@ async function downloadExport(format: 'STEP' | '3MF') {
             :shapes="shapes"
             :build-stage="buildStage"
             :build-pending="buildPending"
+            :stale="shapesStale"
+            @show-error="paramFormRef?.revealErrors()"
           />
           <template #fallback>
             <div class="flex h-full items-center justify-center text-sm text-neutral-400">
